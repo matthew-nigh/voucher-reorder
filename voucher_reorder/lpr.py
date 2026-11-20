@@ -1,6 +1,7 @@
 """Bounded, loopback-only RFC 1179 receive-job subset for Windows TCP/IP monitor."""
 
 import os
+import socket
 import socketserver
 import tempfile
 from pathlib import Path
@@ -82,6 +83,11 @@ class Handler(socketserver.StreamRequestHandler):
 class Server(socketserver.TCPServer):
     # Serial receipt is intentional: bounded resource usage and ordered jobs.
     allow_reuse_address = False
+
+    def server_bind(self):
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
     def __init__(self, address, spool, accept):
         if address[0] != "127.0.0.1":

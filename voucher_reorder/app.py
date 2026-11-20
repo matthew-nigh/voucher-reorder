@@ -84,13 +84,9 @@ def main():
             + "\n".join(states[-10:])
         )
     elif args.command in ("stop", "discard"):
-        (root / "stop").touch()
-        for _ in range(150):
-            if not (root / "worker.json").exists():
-                break
-            time.sleep(1)
-        else:
-            raise RuntimeError("Worker has not stopped. Check printer queues before trying again.")
+        from .lifecycle import stop_worker
+
+        stop_worker(root)
         if args.command == "discard":
             from .queue import Queue
 
