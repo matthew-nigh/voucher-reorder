@@ -11,6 +11,13 @@ from pathlib import Path
 @dataclass(frozen=True)
 class Settings:
     printer: str = ""
+    mode: str = "pdf"
+    watch_inbox: bool = True
+    paper_kind: int = 1
+    paper_width: float = 8.5
+    paper_height: float = 11.0
+    tray: int = 0
+
     order: tuple[int, int, int] = (1, 0, 2)
     boundaries: tuple[float, float] | None = None
     offsets: tuple[tuple[float, float], ...] = ((0, 0), (0, 0), (0, 0))
@@ -18,6 +25,15 @@ class Settings:
     printer_model: str = "Unknown"
 
     def __post_init__(self):
+        if self.mode not in ("pdf", "virtual") or type(self.watch_inbox) is not bool:
+            raise ValueError("Invalid operating mode.")
+        if type(self.paper_kind) is not int or not 1 <= self.paper_kind <= 65535:
+            raise ValueError("Select a paper size supported by your printer.")
+        if type(self.tray) is not int or not 0 <= self.tray <= 65535:
+            raise ValueError("Invalid paper tray.")
+        if any(not math.isfinite(n) or not 2 <= n <= 40 for n in (self.paper_width, self.paper_height)):
+            raise ValueError("Paper dimensions must be between 2 and 40 inches.")
+
         if sorted(self.order) != [0, 1, 2] or any(type(i) is not int for i in self.order):
             raise ValueError("Choose each of Check, Stub 1, and Stub 2 once.")
         if not isinstance(self.printer, str) or any(c in self.printer for c in "\r\n\0"):

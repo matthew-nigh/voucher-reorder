@@ -43,7 +43,22 @@ def convert(source, output):
     )
 
 
-def forward(pdf, printer, appdata):
+def forward(pdf, settings, appdata):
+    from .printing import validate_pages
+    printer = settings.printer
+    validate_pages(pdf, settings)
+    result = subprocess.run(powershell("printer_info.ps1", "-Printer", printer,
+        "-PaperKind", settings.paper_kind), capture_output=True, check=True,
+        timeout=30, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    import json
+    info = json.loads(result.stdout.decode("utf-8-sig"))
+    if info["landscape"]:
+        raise ValueError("Set the printer's default orientation to portrait before printing vouchers.")
+    if abs(info["width"]-settings.paper_width) > .02 or abs(info["height"]-settings.paper_height) > .02:
+        raise ValueError("Printer paper dimensions changed. Select the paper again in Settings.")
+    if settings.tray and settings.tray not in info["trays"]:
+        raise ValueError("The selected tray is no longer available.")
+
     if not printer or printer.casefold() == "voucher reorder":
         raise ValueError("Select a physical printer in Voucher Reorder Settings.")
     appdata = Path(appdata)
@@ -63,7 +78,8 @@ def forward(pdf, printer, appdata):
             "-print-to",
             printer,
             "-print-settings",
-            "noscale,simplex,paper=letter,disable-auto-rotation",
+            f"noscale,simplex,1x,paperkind={settings.paper_kind},disable-auto-rotation"
+            + (f",bin={settings.tray}" if settings.tray else ""),
             "-silent",
             pdf,
         ]
@@ -91,7 +107,9 @@ def message(text):
 
 def register_user():
     import winreg
-
+    from .config import data_dir
+    if (data_dir()/"maintenance.json").exists():
+        return
     command = subprocess.list2cmdline([sys.executable, str(ROOT / "app.py"), "worker"])
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run") as key:
         winreg.SetValueEx(key, "VoucherReorder", 0, winreg.REG_SZ, command)
@@ -99,94 +117,3 @@ def register_user():
         [sys.executable, str(ROOT / "app.py"), "worker"], creationflags=subprocess.CREATE_NO_WINDOW
     )
 
-
-def launch_desktop_settings():
-    """Drop the installer's elevation using the signed-in Explorer process token.
-
-    Setup already checks that Explorer belongs to the installing account. All handle
-    signatures are explicit so this works with 64-bit Python (no truncated handles).
-    """
-    import ctypes as c
-    from ctypes import wintypes as w
-
-    user32, kernel32, advapi32 = c.windll.user32, c.windll.kernel32, c.windll.advapi32
-
-    class StartupInfo(c.Structure):
-        _fields_ = [
-            ("cb", w.DWORD),
-            ("lpReserved", w.LPWSTR),
-            ("lpDesktop", w.LPWSTR),
-            ("lpTitle", w.LPWSTR),
-            ("dwX", w.DWORD),
-            ("dwY", w.DWORD),
-            ("dwXSize", w.DWORD),
-            ("dwYSize", w.DWORD),
-            ("dwXCountChars", w.DWORD),
-            ("dwYCountChars", w.DWORD),
-            ("dwFillAttribute", w.DWORD),
-            ("dwFlags", w.DWORD),
-            ("wShowWindow", w.WORD),
-            ("cbReserved2", w.WORD),
-            ("lpReserved2", c.c_void_p),
-            ("hStdInput", w.HANDLE),
-            ("hStdOutput", w.HANDLE),
-            ("hStdError", w.HANDLE),
-        ]
-
-    class ProcessInfo(c.Structure):
-        _fields_ = [
-            ("hProcess", w.HANDLE),
-            ("hThread", w.HANDLE),
-            ("dwProcessId", w.DWORD),
-            ("dwThreadId", w.DWORD),
-        ]
-
-    user32.GetShellWindow.restype = w.HWND
-    user32.GetWindowThreadProcessId.argtypes = [w.HWND, c.POINTER(w.DWORD)]
-    kernel32.OpenProcess.argtypes = [w.DWORD, w.BOOL, w.DWORD]
-    kernel32.OpenProcess.restype = w.HANDLE
-    kernel32.CloseHandle.argtypes = [w.HANDLE]
-    advapi32.OpenProcessToken.argtypes = [w.HANDLE, w.DWORD, c.POINTER(w.HANDLE)]
-    advapi32.DuplicateTokenEx.argtypes = [
-        w.HANDLE,
-        w.DWORD,
-        c.c_void_p,
-        c.c_int,
-        c.c_int,
-        c.POINTER(w.HANDLE),
-    ]
-    advapi32.CreateProcessWithTokenW.argtypes = [
-        w.HANDLE,
-        w.DWORD,
-        w.LPCWSTR,
-        w.LPWSTR,
-        w.DWORD,
-        c.c_void_p,
-        w.LPCWSTR,
-        c.POINTER(StartupInfo),
-        c.POINTER(ProcessInfo),
-    ]
-    pid = w.DWORD()
-    user32.GetWindowThreadProcessId(user32.GetShellWindow(), c.byref(pid))
-    process = kernel32.OpenProcess(0x1000, False, pid.value)
-    token, primary = w.HANDLE(), w.HANDLE()
-    info = ProcessInfo()
-    try:
-        if not process or not advapi32.OpenProcessToken(process, 0x000A, c.byref(token)):
-            raise OSError("Could not access the desktop token")
-        if not advapi32.DuplicateTokenEx(token, 0x02000000, None, 2, 1, c.byref(primary)):
-            raise OSError("Could not duplicate the desktop token")
-        startup = StartupInfo()
-        startup.cb = c.sizeof(startup)
-        startup.lpDesktop = "winsta0\\default"
-        command = c.create_unicode_buffer(
-            subprocess.list2cmdline([sys.executable, str(ROOT / "app.py"), "settings"])
-        )
-        if not advapi32.CreateProcessWithTokenW(
-            primary, 1, sys.executable, command, 0x08000000, None, str(ROOT), c.byref(startup), c.byref(info)
-        ):
-            raise OSError("Could not launch settings as the desktop user")
-    finally:
-        for handle in (info.hThread, info.hProcess, primary, token, process):
-            if handle:
-                kernel32.CloseHandle(handle)

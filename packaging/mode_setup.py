@@ -1,0 +1,53 @@
+"""Only this optional action requests UAC. Refusal always leaves PDF mode usable."""
+import json
+import subprocess
+import sys
+from dataclasses import replace
+
+from voucher_reorder.config import data_dir, load, save
+from voucher_reorder.lifecycle import stop_worker
+from voucher_reorder.windows import ROOT, message, powershell, register_user
+
+
+def main(action):
+    root = data_dir()
+    root.mkdir(parents=True, exist_ok=True)
+    config = root/'settings.json'
+    initialized = root/'mode-initialized'
+    if action == 'auto' and initialized.exists():
+        return 0
+    remove = action in ('pdf', 'remove')
+    settings = load(config)
+    if action == 'remove' and settings.mode != 'virtual':
+        # A previously declined removal may leave a printer behind; still offer cleanup.
+        pass
+    try:
+        stop_worker(root)
+        result = subprocess.run(powershell('request_printer.ps1', '-Action', 'remove' if remove else 'install'),
+            timeout=300, check=False, creationflags=subprocess.CREATE_NO_WINDOW)
+        if not remove and result.returncode == 0:
+            save(config, replace(settings, mode='virtual'))
+            detail = 'Virtual printer mode is ready. Print to Voucher Reorder while signed in.'
+        else:
+            save(config, replace(settings, mode='pdf'))
+            detail = ('PDF handoff mode is ready. Save QuickBooks PDFs in the Inbox shown in Settings. '
+                'No administrator access is needed for this mode.')
+            if remove and result.returncode:
+                detail += ' The optional Windows printer was not removed; an administrator can remove it later.'
+        initialized.touch()
+        if action != 'remove':
+            register_user()
+        message(detail)
+        return 0
+    except Exception:
+        # No elevation/setup failure may make the no-admin application unusable.
+        save(config, replace(settings, mode='pdf'))
+        initialized.touch()
+        if action != 'remove':
+            register_user()
+        message('Virtual printer setup was unavailable. PDF handoff mode is ready; open Voucher Reorder from Start.')
+        return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main(sys.argv[1] if len(sys.argv)>1 else 'auto'))
