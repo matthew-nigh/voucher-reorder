@@ -45,16 +45,22 @@ def convert(source, output):
 
 def forward(pdf, settings, appdata):
     from .printing import validate_pages
+
     printer = settings.printer
     validate_pages(pdf, settings)
-    result = subprocess.run(powershell("printer_info.ps1", "-Printer", printer,
-        "-PaperKind", settings.paper_kind), capture_output=True, check=True,
-        timeout=30, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    result = subprocess.run(
+        powershell("printer_info.ps1", "-Printer", printer, "-PaperKind", settings.paper_kind),
+        capture_output=True,
+        check=True,
+        timeout=30,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
     import json
+
     info = json.loads(result.stdout.decode("utf-8-sig"))
     if info["landscape"]:
         raise ValueError("Set the printer's default orientation to portrait before printing vouchers.")
-    if abs(info["width"]-settings.paper_width) > .02 or abs(info["height"]-settings.paper_height) > .02:
+    if abs(info["width"] - settings.paper_width) > 0.02 or abs(info["height"] - settings.paper_height) > 0.02:
         raise ValueError("Printer paper dimensions changed. Select the paper again in Settings.")
     if settings.tray and settings.tray not in info["trays"]:
         raise ValueError("The selected tray is no longer available.")
@@ -107,13 +113,17 @@ def message(text):
 
 def register_user():
     import winreg
+
     from .config import data_dir
-    if (data_dir()/"maintenance.json").exists():
+
+    if (data_dir() / "maintenance.json").exists():
         return
-    command = subprocess.list2cmdline([sys.executable, str(ROOT / "app.py"), "worker"])
+    executable = ROOT / "runtime/pythonw.exe"
+    if not executable.exists():
+        executable = Path(sys.executable)
+    command = subprocess.list2cmdline([str(executable), str(ROOT / "app.py"), "worker"])
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run") as key:
         winreg.SetValueEx(key, "VoucherReorder", 0, winreg.REG_SZ, command)
     subprocess.Popen(
-        [sys.executable, str(ROOT / "app.py"), "worker"], creationflags=subprocess.CREATE_NO_WINDOW
+        [str(executable), str(ROOT / "app.py"), "worker"], creationflags=subprocess.CREATE_NO_WINDOW
     )
-

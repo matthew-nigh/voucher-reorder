@@ -1,47 +1,53 @@
 # Voucher Reorder — quick user guide
 
-**Start with plain Letter paper, not check stock.** This first version needs a
-plain-paper test on your computer before you use it for checks.
+**Start with plain paper, not check stock.** Windows 10/11 x64 is supported.
 
-1. **Install.** Sign into the Windows administrator account you use for QuickBooks.
-   Close QuickBooks. Run `VoucherReorder-0.1.0-Setup.exe` and allow installation.
-   If Windows SmartScreen appears, choose **More info → Run anyway** after checking
-   that the file came from this project's download. Setup may need internet to
-   install a Microsoft runtime. Leave **Open Voucher Reorder Settings** selected.
-   If setup reports that the printer driver is unavailable, ask your installer for
-   help; do not change Windows security settings yourself.
-2. **Choose your printer.** In Settings, select the real printer that holds your
-   paper. Choose the order that matches your check stock **from top to bottom**.
-   The three boxes show where Check, Stub 1 and Stub 2 will go. Save settings.
-3. **Print the test.** Put plain Letter paper in the real printer. Click
-   **Print alignment test page**. Hold the sheet over unused check stock against a
-   light. The labeled sections should match the stock. Measure two numbered ruler
-   marks: adjacent numbers should be exactly one inch apart.
-4. **Adjust if needed.** Enter small nudges for the section that needs moving:
-   positive X moves right, negative X left; positive Y moves down, negative Y up.
-   Start with `0.02` inch. Save and print another test. Leave split lines blank for
-   equal thirds. Only change them if your installer has measured the original
-   QuickBooks layout (for example `3.5` and `7` inches from the top).
-5. **Try QuickBooks on plain paper.** Reopen QuickBooks, select its three-part
-   voucher check layout, and select **Voucher Reorder** as its printer. Use Letter,
-   portrait and one copy. Print one check to plain paper, then overlay it on stock.
-   Check the payee, amount, voucher text and bottom check line. Follow your normal
-   bookkeeping procedure for that test; avoid accidentally issuing a duplicate.
-6. **Use it.** After the overlay is approved, load the stock in the same direction
-   and tray and print to **Voucher Reorder**. Stay signed in. You will not need to
-   open or save a PDF. Reopen **Voucher Reorder → Settings** from Start to adjust.
+1. **Install or upgrade.** Run `VoucherReorder-0.2.0-Setup.exe` normally. If SmartScreen
+   appears, confirm the download came from this project, then choose **More info →
+   Run anyway**. Setup asks permission to add the virtual printer. Approve UAC (an
+   administrator can enter credentials), or decline to use the app without admin.
+   Either way, the app installs for your Windows account. For updates, run the newer
+   installer without uninstalling first. Your settings stay saved.
+2. **Choose the real printer.** Open Voucher Reorder from Start. Its top line shows
+   **Virtual printer** or **PDF handoff** mode. Select your real printer, matching
+   paper size and tray. On the Alignment tab, match the three boxes to your stock's
+   top-to-bottom order. Save. Use portrait orientation in the printer's preferences.
+3. **Align on plain paper.** Click **Print alignment test**. Measure the ruler:
+   adjacent numbers must be exactly one inch apart. Overlay the sheet on unused
+   stock. Adjust nudges in small steps, such as `0.02` inch: positive X moves right,
+   positive Y down. Save and print another test. Leave split lines blank for equal
+   thirds unless you have measured the original QuickBooks sections. Printer margins
+   can clip text; the app will not shrink it to fit.
+4. **Print from QuickBooks using the active mode.**
+   - **Virtual printer:** select **Voucher Reorder**, portrait, the matching paper
+     size and one copy. Reordering and forwarding happen automatically.
+   - **PDF handoff:** select an already available **Microsoft Print to PDF** (or your
+     existing PDF exporter). Click **Copy Inbox path** in the app and paste that
+     folder into the Save dialog. Save each new job under a new PDF filename. With
+     automatic Inbox printing checked, it forwards when saving finishes. Or save
+     elsewhere, then click **Print a PDF** and choose the file. If no PDF printer or
+     exporter exists, ask your administrator to enable one; this app does not do so.
+5. **Approve the real layout.** Print one QuickBooks check to **plain paper only**,
+   following your office's normal test/reprint procedure. Overlay it on unused stock
+   and check every field, stub and bottom check line. Only then use check stock in
+   the same tray and feed direction. Stay signed in while jobs are printing.
 
-**If nothing prints or you see a warning:** open Settings → **Job status**. Check
-both the Voucher Reorder and real printer queues in Windows, and look at the paper
-already printed. A job marked “sent” can still be waiting in Windows. Do not just
-print it again. **Cancel waiting jobs** cancels only jobs still waiting in this app;
-also cancel unwanted jobs in Windows. Ask for help if you are unsure.
+**After an update:** Settings closes while the app finishes the current job.
+Waiting jobs are held. Check **Job status**, load the right paper, then choose
+**Resume held jobs**. A failed/interrupted job is never automatically reprinted.
+If setup is interrupted, run the installer again; do not install an older version.
 
-**Remove it:** cancel pending jobs in both printer queues, close Settings and
-QuickBooks, then use Windows **Settings → Apps → Voucher Reorder → Uninstall**
-from the account that installed it. This removes the app, its printer, startup
-entry and its saved local jobs/settings. Shared Microsoft drivers/runtimes remain.
+**If nothing prints:** check Job status, the real Windows printer queue, and paper
+already printed. “Sent” can still mean waiting in Windows. Do not simply print again.
+Exact duplicate PDFs are suppressed for 24 hours. Cancel unwanted jobs in both the
+app and Windows. Inbox originals remain until you delete them after checking output.
 
-**When asking for help:** send the Windows and QuickBooks versions, printer model,
-section order, and measurements from a **fake alignment page**. Never post a real
-check, bank details, payee names or spool files to the public project.
+**Switch modes:** use the buttons at the top of the app. Adding/removing the virtual
+printer needs UAC; PDF mode does not. **Uninstall:** use Windows Settings → Apps.
+Declining UAC can leave the optional printer installed but removes the per-user app.
+Your settings, Inbox and held jobs remain for reinstall. After checking queues and
+paper, you may delete `%LOCALAPPDATA%\VoucherReorder` to remove those saved files.
+
+For help, share only Windows/QuickBooks versions, printer model, stock order and
+measurements or photos of **fake alignment pages**. Never post real checks, bank
+numbers, payee names, settings files or spool files to the public project.

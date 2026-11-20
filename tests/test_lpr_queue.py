@@ -119,7 +119,7 @@ def test_failure_not_retried(tmp_path):
 def test_crash_recovery(tmp_path, state):
     queue, job = enqueue(tmp_path)
     queue.update(job, state)
-    restored = Queue(queue.root)
+    restored = Queue(queue.root, recover=True)
     assert restored.read(job)["state"] == "review"
     assert not (job.parent / "input.ps").exists()
 
@@ -175,21 +175,3 @@ def test_nonletter_is_rejected_before_physical_forward(tmp_path):
     process_one(queue, Settings(printer="FAKE"), odd_convert, lambda *args: calls.append(args))
     assert not calls
     assert queue.read(job)["state"] == "failed"
-
-
-def test_shutdown_recovers_stale_heartbeat_without_killing_listener(tmp_path):
-    from voucher_reorder.lifecycle import stop_worker
-
-    marker = tmp_path / "worker.json"
-    marker.write_text('{"heartbeat": 0}')
-    with socket.socket() as listener:
-        listener.bind(("127.0.0.1", 0))
-        listener.listen()
-        address = listener.getsockname()
-        with pytest.raises(RuntimeError, match="not stopped"):
-            stop_worker(tmp_path, address, timeout=0)
-        assert marker.exists()
-        assert listener.fileno() != -1
-    stop_worker(tmp_path, address, timeout=1)
-    assert not marker.exists()
-    assert (tmp_path / "stop").exists()

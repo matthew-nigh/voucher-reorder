@@ -1,106 +1,110 @@
 # Next steps for Matthew
 
-## Done
+## Done in this round
 
-- GPL-3.0-or-later change is the first branch commit, including the full official
-  GPLv3 text, README notice and package metadata.
-- Vector PDF reorder engine: all six orders, inch-based split lines and per-source
-  nudges, multiple pages, unequal/odd page sizes, crop origins and rotation.
-- Bounded local LPR receiver, durable queue, duplicate suppression and conservative
-  crash/failure handling; Ghostscript conversion and silent actual-size forwarding.
-- Native Windows settings with real-printer choice, section picture, offsets,
-  optional environment notes, job status/cancel, and fake alignment page.
-- NSIS installer packaging official pinned x64 runtimes, printer setup/rollback,
-  desktop-token startup and uninstall; source/license archive and checksums.
-- GitHub Actions Linux tests and Windows installer/artifact build; future v* tag
-  pushes attach binary, sources and checksums to a Release.
-- User guide, maintainer architecture/build docs, and detailed Windows checklist.
+- A per-user x64 app for Windows 10/11, with HKCU startup/uninstall entries and no
+  service. Optional virtual-printer setup is offered through UAC by default;
+  cancellation, missing credentials or setup failure automatically selects PDF mode.
+- Both modes share the vector reorder engine, settings and durable queue. Settings
+  shows the active mode and supports switching later. PDF handoff uses a dedicated
+  Inbox or manual PDF selection; closed, complete PDFs are received without moving
+  or deleting originals. Persistent receipts prevent repeat printing after restart.
+- All installed user-accessible printers are listed, with driver-reported paper
+  sizes/trays/margins. Actual-size forwarding rejects mismatched sheets and requests
+  one copy/simplex without fitting or automatic rotation. Offsets remain configurable.
+- In-place per-user upgrades with stable identity, isolated payloads, graceful stop,
+  immutable job settings, held waiting jobs, downgrade refusal, same-version repair,
+  activation rollback and cleanup of old owned deployments. Settings/mode survive.
+- Tests for both input paths, mode fallback, PDF readiness/duplicates, multiple paper
+  sizes, update preservation/rollback/busy-worker behavior. CI adds native Windows
+  standard-user install/upgrade/downgrade/repair/uninstall and UI construction checks.
+- Public user guide, maintainer/build docs, complete third-party notices and matching
+  source artifacts; GPL-3.0-or-later remains unchanged. No tag/release/merge is created.
 
-## Not done / not yet proven
+## Still needs real Windows/QuickBooks/printer acceptance
 
-This is an initial implementation, not a hardware-qualified release. No real
-Windows workstation, QuickBooks session, physical printer or check stock was
-available in the Linux development environment. The installer build and CI checks
-do not prove successful installation, native settings behavior, queue behavior or
-MICR/physical alignment on the intended office machine. No tags or releases are
-created by this work. Code signing is intentionally absent.
+The CI Windows host is not a Windows 10/11 office PC with QuickBooks and a physical
+printer. Virtual-printer provisioning is covered with mocked Windows printer APIs;
+its actual inbox-driver availability/UAC/spooler behavior must pass the hardware
+checklist. Do not call the tool hardware-qualified or bank/MICR-certified yet.
 
-The initial scope requires the QuickBooks user's own administrator account for
-installation. Standard-user/alternate-admin onboarding, multiple active accounts,
-print servers, ARM64, unattended printing while logged out, and automatic upgrades
-are not implemented. Uninstall the previous version before reinstalling.
+1. Record Windows edition/build, QuickBooks year/edition/release, physical printer
+   model/driver/connection/tray, and stock order/section heights.
+2. On Win10 x64 and Win11 x64, install as a **standard user**. Decline UAC; confirm
+   PDF mode works, no driver/port/service is added, and no repeated elevation occurs.
+3. Select the real printer/paper/tray; print alignment on plain paper. Measure its
+   ruler, edges and nudges. Test Letter and the actual non-Letter size if applicable.
+4. Print a fake QuickBooks check through Print to PDF → Inbox, then test manual PDF
+   selection. Check slow saves, restart, duplicate files and queue status. Originals
+   must remain unchanged, and old Inbox files must not print again after restart.
+5. Enable the virtual printer, including with **different administrator credentials**
+   if used by the office. Print a fake QuickBooks check directly to Voucher Reorder.
+   Confirm no Save dialog and the background app remains unelevated. Test UAC refusal,
+   missing driver/policy restrictions, port conflict and switching back to PDF mode.
+6. Print one real QuickBooks check to **plain paper only**, under the office's normal
+   test/reprint bookkeeping rules. Overlay on stock; inspect all fields and MICR.
+   Keep the real sheet private. Obtain approval before loading live stock.
+7. In each mode, print fake multipage batches and consecutive jobs. Test offline and
+   out-of-paper behavior. Check both queues and physical output before reprinting.
+8. Upgrade while idle, with Settings open, with waiting jobs and during a fake print.
+   Verify settings/mode persist, waiting jobs are held, the current job finishes or
+   setup aborts safely, old files are cleaned, and no uncertain job auto-retries.
+9. Try same-version repair, a downgrade and interrupted setup. Rerun setup to recover.
+   Reboot and verify startup/shortcuts use only the active deployment. Check uninstall
+   with UAC approved and declined, including settings/Inbox retention and reinstall.
+10. Send checkbox results, redacted errors, versions, fake-page measurements/photos
+    and queue observations. Never upload financial data, real PDFs or spool files.
 
-## Next real-machine steps (in order)
+The detailed scenarios and expected results are in TESTING_ON_WINDOWS.md.
 
-1. Record the Windows/QuickBooks versions, printer model/driver/tray and stock order.
-   Download the PR's Windows artifact with its matching source/checksum archive.
-2. Install while logged into the QuickBooks administrator account. Confirm the new
-   printer, native settings, non-elevated worker and automatic startup after reboot.
-3. Use only plain Letter paper. Select the real printer/order and print alignment.
-   Measure the ruler (one inch between numbers), section edges and nudge direction.
-4. Exercise all six orders and measured split lines. Confirm no scale changes or
-   overlap when sections have different heights.
-5. Print a fake QuickBooks voucher through **Voucher Reorder**; the Settings test
-   button alone does not exercise the virtual printer. Check for unwanted dialogs.
-6. Print one real QuickBooks check to plain paper, applying the office's normal
-   test/reprint bookkeeping rules. Overlay it on unused stock, inspect every field
-   and MICR line. Keep all real documents private. Obtain approval before using stock.
-7. Print a fake multi-page batch and consecutive jobs; count sheets and check order.
-8. Test offline printer, out-of-paper, crash/restart, cancellation and duplicate
-   receipt behavior. Reconcile paper plus both queues before reprinting anything.
-9. Inspect local data cleanup and account isolation. Uninstall, reboot, confirm
-   cleanup and reinstall. Complete every item in TESTING_ON_WINDOWS.md.
-10. Send only environment facts, checkbox outcomes, exact redacted errors, ruler
-    measurements and fake-page images. Never upload real check/bank/spool data.
+## Questions still open for Matthew
 
-## Questions for Matthew
+- Which QuickBooks Desktop year, edition and release?
+- Which physical printer make/model, driver, connection and paper tray?
+- What is the stock's top/middle/bottom order and each measured section height?
+- Are standard accounts, alternate admin credentials, organizational print policies,
+  multiple users or ARM64 machines part of the intended audience?
 
-- Which QuickBooks Desktop year, edition and release is used?
-- Which physical printer make/model, Windows driver, connection and paper tray?
-- What is the stock's top-to-bottom section order and each section's measured height?
-- Is Windows 10 or 11 used, is the account an administrator, and is Protected Print
-  Mode or an organizational printer policy enabled?
-- Are multiple users/computers expected to share this workflow?
+## Remaining admin requirements and limitations
 
-The first three are deliberately configurable: version/model notes and section
-order/split lines are in Settings. They remain unknown until Matthew supplies them.
-
-## Known risks and limitations
-
-- The Microsoft inbox PostScript driver may be unavailable or blocked. Setup must
-  fail clearly; do not work around organizational security without the administrator.
-- The loopback LPR endpoint is unauthenticated; other local processes can submit
-  jobs directly. Printer ACLs do not protect that TCP endpoint. Use a trusted
-  single-user workstation.
-- LPR uses local port 515; an existing LPD service or another signed-in worker can
-  conflict. The supported scope is one account. No new inbound firewall rule is used.
-- End-to-end fonts, MICR, paper origin, feed direction, printer margins and actual
-  scale require hardware testing. The reorder engine preserves vectors; downstream
-  renderer/driver behavior is distinct and can rasterize at device resolution.
-- Interrupted forwarding has an unknown physical outcome. There is no exactly-once
-  guarantee across Windows, the printer and power failures. The app avoids automatic
-  retries; operators must reconcile output. Byte-identical jobs are suppressed for
-  24 hours, including intentional identical reprints.
-- Waiting jobs can contain financial data locally until completed/canceled/expired.
-  Expiry runs only while the app runs or at next start; deletion is not secure erase.
-  Windows spooling/backup retention is separate. No financial data belongs in GitHub.
-- The engine can reorder arbitrary sizes; automatic forwarding deliberately supports
-  only portrait Letter. Nudges are clipped to section slots; they cannot recover
-  content outside the physical printer's printable area.
-- Unsigned setup triggers SmartScreen. Missing Microsoft C++ runtime requires an
-  internet connection for a signature-checked download from Microsoft. Shared system
-  prerequisites remain after uninstall. Full component notices/source accompany builds.
+- **PDF mode app install/use/upgrade/uninstall needs no admin.** An absent Windows PDF
+  feature, absent physical-printer driver or restrictive organization policy may
+  still need IT action. An existing PDF exporter is a valid alternative.
+- Optional creation/removal of the machine virtual printer needs admin. Its shared
+  C++ runtime may need installation/download. Declining removal leaves that printer
+  installed but dormant. The application itself remains per-user and unelevated.
+- The earlier 0.1 prototype installed in Program Files and wrote a machine uninstall
+  entry. A standard user cannot clean those machine resources. Back up profile data,
+  have an administrator remove 0.1, then restore settings before using 0.2. Do not
+  leave both background apps running. Seamless in-place upgrades apply to the new
+  per-user 0.2+ architecture, in either mode; the prototype migration is an exception.
+- PDF mode necessarily exposes one PDF Save/select step. Inbox originals are not
+  automatically deleted. Private queued payloads/status expire after 24 hours only
+  while the app runs/at restart; ordinary deletion is not secure erase.
+- Identical job bytes within 24 hours are suppressed. There is no exactly-once
+  guarantee across Windows and a physical printer. Uncertain attempts require human
+  reconciliation; only unattempted held jobs can be resumed.
+- Virtual mode's one machine queue/loopback port serves one signed-in user. Its LPR
+  endpoint is unauthenticated to local processes. PDF mode supports separate users
+  without a listening port. No unattended printing while signed out is promised.
+- Hardware margins, paper feed/tray rules, driver overrides and MICR quality vary.
+  Vectors are preserved in the engine; downstream printer rendering may rasterize.
+- Locked old payload files are retained safely and retried for cleanup at a later
+  successful install. Uninstall preserves user data intentionally. A hard crash or
+  disk failure during activation may require rerunning the installer.
+- Windows x64 is supported; native ARM64 and x64-on-ARM behavior are unqualified.
+  Setup is unsigned, so SmartScreen may show a warning. Enterprise script/application
+  controls can block the included UI or binaries; the app never bypasses site policy.
 
 ## Recommended next Codex rounds
 
-1. **Windows acceptance fixes:** use the completed checklist to resolve driver
-   registration, startup token, settings, LPR behavior, and uninstall issues. Do not
-   expand scope before a full plain-paper QuickBooks print succeeds.
-2. **Printer-specific alignment:** calibrate with Matthew's model/stock; confirm
-   fonts/MICR, tray settings and offset precision. Add regression fixtures made only
-   from fake data reproducing observed layout issues.
-3. **Deployment hardening:** standard-user installation, upgrades/repair, clearer
-   background-health reporting, queue recovery UX and multi-user needs if required.
-4. **Release preparation:** dependency/security and corresponding-source review,
-   optional signing, additional Windows matrix tests, and a maintainer-approved tag
-   only after the real-machine acceptance gate passes.
+1. **Run the hardware matrix first:** fix findings from both input modes, true UAC,
+   alternate credentials, Win10/11 and physical printer tests before tagging a release.
+2. **Printer calibration:** add only fake regression fixtures for observed layout,
+   margin, tray, Unicode printer-name and font issues; validate actual-size/MICR output.
+3. **Deployment hardening:** simulate power/disk failures, antivirus file locks,
+   standard-user profiles/redirected folders and prototype migration; qualify ARM64
+   only if demand justifies a separate runtime/driver compatibility matrix.
+4. **Public release gate:** review dependency/source notices and security updates,
+   optional signing and the completed Windows checklist, then let Matthew approve a
+   release tag. Codex must not create a tag or merge this PR in this round.

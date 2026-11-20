@@ -1,6 +1,6 @@
 # This is the ONLY elevated component. The application/installer remain per-user.
 param([ValidateSet('install','remove')][string]$Action,
-      [ValidatePattern('^S-1-5-21-[0-9-]+$')][string]$TargetSid)
+      [ValidatePattern('^S-1-[0-9]+(?:-[0-9]+){1,14}$')][string]$TargetSid)
 $ErrorActionPreference = 'Stop'
 $name = 'Voucher Reorder'
 $port = 'VoucherReorder_LPR'

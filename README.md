@@ -1,155 +1,172 @@
 # Voucher Reorder
 
-A Windows desktop tool that moves the three horizontal sections of a QuickBooks
-Desktop voucher check to match differently ordered check stock. The user installs
-one setup executable, chooses their real printer and stock order, then prints to
-**Voucher Reorder** from QuickBooks. PDFs and scripts stay behind the scenes.
+Move the three sections of a QuickBooks Desktop voucher check to match your check
+stock. Choose your real printer, section order and alignment once; the app sends
+reordered pages at **100% actual size**, one-sided.
 
-**Initial implementation; real Windows/QuickBooks/printer acceptance is still required.**
-Do not put live check stock in the printer until the plain-paper overlay tests pass.
-See [USER_GUIDE.md](USER_GUIDE.md), [TESTING_ON_WINDOWS.md](TESTING_ON_WINDOWS.md),
-and the handoff in [NEXT_STEPS.md](NEXT_STEPS.md).
+**Windows 10 and Windows 11 x64.** No subscription, no upload of check data, GPLv3
+free software. This is a public release candidate: complete the plain-paper test
+on your QuickBooks/printer before putting live check stock in the tray.
 
-## Supported initial scope
+## Install and choose a mode
 
-- Windows 10/11 **x64**, one interactive Windows account on one workstation.
-- Install while signed into the administrator account that will run QuickBooks;
-  normal printing runs with that account's **unelevated** desktop token.
-  Alternate administrator credentials, shared print servers, fast user switching,
-  ARM64, and unattended printing while logged out are not supported.
-- Portrait US Letter, one check per page, one-sided physical output, actual size.
-- All six section orders; source split lines measured from the top in inches;
-  per-source-section x/y nudges. Positive x moves right; positive y moves down.
-- Default thirds are **11/3 inches**, not 3.5 inches. For 3.5/3.5/4-inch input
-  sections, use split lines **3.5 and 7**. Unequal bands retain their heights and
-  are stacked in the selected order, without scaling. Nudges clip at slot edges.
-- The standalone engine supports multiple and mixed page sizes, rotated pages,
-  nonzero CropBox origins, text, fonts, images and vector graphics. Production
-  forwarding rejects non-Letter pages, encrypted PDFs, annotations and unusual
-  `/UserUnit` values rather than silently changing physical scale.
+Download `VoucherReorder-0.2.0-Setup.exe` from the PR's **Actions artifact** (or a
+future tagged Release). Run it normally. Python and PDF tools are included.
 
-## Architecture and choice
+| Mode | What you do in QuickBooks | Administrator needed? |
+| --- | --- | --- |
+| **Virtual printer — setup's preferred option** | Print to **Voucher Reorder**; the app reorders and forwards automatically. No PDF Save dialog. | Only to install/remove the optional Windows printer and its prerequisite. Setup requests UAC; a different administrator can provide credentials for the signed-in user. |
+| **PDF handoff — automatic fallback** | Print to an **already available** Microsoft Print to PDF, then save in the Inbox shown in the app. Alternatively save/export a PDF elsewhere and click **Print a PDF**. | **No** admin access to install, upgrade, run or remove the per-user app. |
+
+Declining UAC, lacking credentials, a blocked driver, or a failed optional setup
+leaves a working PDF-mode app. Settings clearly shows the active mode and has
+**Enable virtual printer (UAC)** and **Switch to PDF handoff** buttons. Declining
+printer removal still switches to PDF mode; the dormant Windows printer remains
+until an administrator removes it. The app never changes your Windows default printer.
+
+PDF mode adds a Save step; it cannot hide Windows' Print to PDF filename dialog.
+If that Windows feature or your physical printer driver is missing, enabling or
+installing it may require your administrator. An existing PDF exporter/printer
+works too. The app never silently enables Windows features or changes security policy.
+
+See the short [user guide](USER_GUIDE.md), exact
+[Windows acceptance checklist](TESTING_ON_WINDOWS.md) and [handoff](NEXT_STEPS.md).
+
+## Printers, paper and alignment
+
+All installed printers visible to the current user are listed: USB, network,
+Wi-Fi and shared queues use their normal Windows drivers. Choose a real output
+printer, not Voucher Reorder or the source PDF printer. Printer access permissions
+and driver installation remain Windows responsibilities; universal hardware
+compatibility is not claimed without testing each model.
+
+Settings enumerates the selected driver's paper sizes and trays and shows its
+reported printable margins. Letter, Legal, A4 and driver-specific sizes can be
+selected. Every PDF page must match the selected physical paper dimensions;
+mismatches fail **before** forwarding instead of being fitted or scaled. Set the
+printer's default orientation to portrait. The print command explicitly requests
+one copy, simplex, the selected paper/tray, `noscale` and no automatic rotation.
+A driver can still override options or have unprintable margins: verify the ruler
+and plain-paper overlay, and use per-section nudges. Nothing can print outside a
+printer's physical printable area.
+
+All six section orders are supported. Split lines are inches **from the source
+page's top**. Default Letter thirds are **11/3 inches**, not 3.5. For 3.5/3.5/4-inch
+source sections, enter `3.5` and `7`. Sections retain their heights when moved;
+nudges clip inside their destination slot. Positive X moves right; positive Y down.
+The engine preserves PDF text, fonts, vector graphics and image data without
+rasterization or scaling. Downstream renderer/driver/MICR quality needs a real test.
+
+## In-place upgrades and removal
+
+Run the newer installer; do **not** uninstall first. Both modes use the same
+per-user identity, install root and data format:
+
+- App: `%LOCALAPPDATA%\Programs\Voucher Reorder`, with isolated version deployments.
+- Settings, private queue, Inbox: `%LOCALAPPDATA%\VoucherReorder`.
+- Start menu, startup and Apps uninstall entry: current user only (HKCU).
+
+An upgrade stages all new files before stopping the running app. Settings closes;
+an in-flight print is allowed to finish, with a bounded wait and no forced kill.
+Waiting jobs are **held**, retaining their original printer/layout settings. After
+upgrade, inspect Job status and use **Resume held jobs** when the correct paper is
+loaded. Interrupted print attempts are marked for review and never auto-retried.
+
+Settings and mode persist. Activation updates the shortcuts/startup entry and
+current-version pointer; failures attempt to restore the previous version.
+Same-version repair is allowed; lower versions are refused. Old owned deployments
+are removed after activation; files still locked by Windows/security software are
+retained safely and cleanup is retried on the next successful install. If setup is
+interrupted, rerun it: a maintenance marker deliberately prevents printing until
+setup finishes. Downgrades are not a recovery method.
+
+Uninstall from Windows Apps. Removing the optional printer requests UAC; refusing
+it does not block removing the per-user app. Cancel jobs in the Windows virtual
+queue first. Settings, Inbox originals and held jobs remain for safe reinstall;
+remove `%LOCALAPPDATA%\VoucherReorder` yourself only after reconciling both printer
+queues and any paper already printed. Shared Microsoft runtimes/drivers remain.
+
+**Earlier 0.1 administrator-only prototype:** its Program Files installation and
+machine printer cannot be deleted by a no-admin installer. Existing profile settings
+are reused, but do not run the old and new apps together. An administrator must
+remove that old machine installation. Back up the profile folder first: the old
+0.1 uninstaller deletes it. Restore that backup before launching the new app and
+reconcile/hold old pending jobs. Public per-user releases starting with 0.2 support
+in-place upgrades in either mode; this pre-public migration needs supervised cleanup.
+
+## Architecture and safety
 
 ```text
-QuickBooks -> Microsoft's signed MS Publisher Imagesetter PostScript driver
-           -> Windows Standard TCP/IP LPR port, 127.0.0.1:515 / queue "voucher"
-           -> per-user Python background receiver and durable queue
-           -> bundled Ghostscript pdfwrite -> vector PDF band imposition (pypdf)
-           -> bundled SumatraPDF -print-to ... -print-settings noscale,...
-           -> selected Windows printer queue -> physical printer
+PDF mode:     existing PDF output -> dedicated Inbox / Print a PDF
+Virtual mode: QuickBooks -> inbox Microsoft PostScript driver -> loopback LPR -> Ghostscript PDF
+Both:         private per-user queue -> vector pypdf reorder -> SumatraPDF -> real printer
 ```
 
-Python's official embeddable runtime plus pure-Python pypdf keeps the engine
-portable and testable on Linux. The settings UI uses Windows' built-in PowerShell
-and WinForms; this avoids bundling another UI runtime. NSIS produces the installer
-on Linux and Windows. No Python installation, scripts, PDF viewer UI, custom kernel
-driver or third-party port-monitor DLL is required for the office user.
+Python's official embeddable runtime and pure-Python pypdf make the core testable
+on Linux. The native UI uses Windows PowerShell/WinForms. NSIS builds one installer
+on Linux or Windows; no separately installed Python, service or new custom driver
+is required. The virtual path reuses Microsoft's signed **MS Publisher Imagesetter**
+and Standard TCP/IP LPR monitor with byte counting. It is available only if Windows
+policy permits that driver. No security restrictions are disabled.
 
-The existing Windows spooler/driver/port combination is a conservative capture
-choice: [LPR byte counting](https://learn.microsoft.com/en-us/powershell/module/printmanagement/add-printerport)
-provides explicit job framing. A fixed-file Microsoft Print to PDF port risks
-shared-file overwrite and completion races; its ordinary port prompts for a name.
-A custom spooler DLL would add deployment and stability risks. Our receiver
-implements the bounded receive-job subset of [RFC 1179](https://www.rfc-editor.org/rfc/rfc1179),
-accepts control/data in either order, and acknowledges only after durable admission.
-It binds **only** to loopback and ignores untrusted LPR filenames and user metadata.
-LPR itself has no authentication: other local processes can submit directly to the
-port. This release assumes a trusted, single-user workstation; the printer ACL does
-not make the TCP endpoint a multi-user security boundary.
+The background app runs as the signed-in user via HKCU startup, never as SYSTEM.
+PDF mode has no listening network port. Virtual mode binds only to `127.0.0.1:515`
+and grants the original user queue access; that global virtual queue supports one
+user per workstation. LPR itself is unauthenticated: other local processes could
+submit to the port. PDF mode supports separate Windows users and avoids that port.
 
-The signed Microsoft PostScript driver must be available in the target Windows
-image. Setup fails visibly if it is missing or legacy drivers are blocked (for
-example Windows Protected Print Mode). It does not disable Windows security policy.
-This is the principal deployment gate for this initial build.
+PDF Inbox ingestion waits for stable size/time, a complete parseable PDF and an
+exclusive Windows read handle. Source PDFs are **not deleted or moved**. Persistent
+receipts prevent old Inbox files from printing again after restart/queue expiry.
+Use new filenames for new jobs; leave unrelated files outside this dedicated folder.
+Copies in the private queue are capped at 100 MiB/job and 100 waiting jobs. They are
+removed after sending, failure or review; waiting copies/status expire after 24
+hours while the app runs or at next start. Inbox originals remain until you delete
+them. Deletion is not secure erasure; Windows spooling and backups are separate.
 
-The engine copies PDF resources into Form XObjects and uses clipping/translation;
-**it never rasterizes, resamples images, or scales content**. Ghostscript
-[pdfwrite](https://ghostscript.readthedocs.io/en/latest/VectorDevices.html) normally
-preserves PostScript text and vectors; it is not a byte-for-byte PS conversion.
-Sumatra's documented [noscale printing](https://www.sumatrapdfreader.org/docs/Command-line-arguments)
-is requested explicitly, with Letter, simplex and automatic rotation disabled.
-Sumatra and the physical printer driver may render at device resolution. End-to-end
-MICR quality and physical placement cannot be certified by the PDF tests.
+Duplicate identical job payloads within 24 hours are suppressed, including deliberate
+identical reprints. Use a fresh QuickBooks output after reconciling paper and queues.
+A “sent” status means handed to Windows, not proof of physical printing. There is
+no exactly-once guarantee across spooler/device/power failures. Settings provides
+job status, cancellation and release of **unattempted held** jobs only. Raw financial
+contents and parser errors are not logged. Never upload real checks or spool files
+to this public repository.
 
-## Jobs, failures and privacy
-
-- The receiver runs at sign-in through the user's Run key; settings starts it too.
-  Print data stays under `%LOCALAPPDATA%\VoucherReorder`, inheriting the user's
-  private profile ACL. The printer queue grants printing to its installing user.
-- A complete job is limited to 100 MiB; at most 100 jobs wait. Control messages
-  have separate small limits; incomplete receipts are deleted. Jobs run serially.
-- States are `queued -> converting -> printing -> sent`. `sent` means accepted
-  by the print command, **not proven to have come out of the printer**.
-- A timeout, forwarding failure, or interrupted in-flight job is held for review
-  and **never automatically reprinted**. Review both Windows queues and physical
-  sheets before initiating a new QuickBooks print. Settings exposes job status
-  and cancellation of jobs still waiting in this app.
-- Byte-identical receipts are suppressed for 24 hours to handle a lost LPR ACK.
-  An intentional byte-identical reprint in that period is also suppressed. Do not
-  use this as a general reprint utility; reconcile output before issuing a new job.
-- Successful, failed and uncertain jobs immediately lose their local PS/PDF payloads.
-  Waiting data and status/digest records expire after 24 hours **while the worker is
-  running**, or at its next start. Ordinary deletion is not secure erasure. Windows
-  spooler data and backups are governed separately by Windows/site policy.
-- No print contents, payee names, bank details or raw exception text enter app logs.
-  The project contains only generated, clearly fake samples. Never attach a real
-  check, spool file or settings file to this public repository.
-
-## Develop and test on Linux
+## Build and test
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements-dev.txt
-# Debian/Ubuntu: sudo apt-get install ghostscript nsis p7zip-full
+# Linux integration/build dependencies: ghostscript, nsis, p7zip-full
 .venv/bin/pytest -q
 .venv/bin/ruff check .
 .venv/bin/ruff format --check .
-```
-
-Tests generate fake PDFs at runtime. PyMuPDF renders them **only as a test oracle**
-to verify visible placement; it is not part of the shipped application. Tests also
-inspect font/vector resources, offsets/clips, uneven sections, rotation, multiple
-pages, invalid settings, LPR framing, duplicate receipts, retention and crash/failure
-behavior. The Ghostscript integration test skips when `gs` is absent.
-
-## Build the Windows installer
-
-Requires Python 3.11+ with no build-time third-party modules, NSIS 3.11+, and 7-Zip.
-
-```bash
-# Works on Linux, including this checkout:
 python3 scripts/build_windows.py
-# Output:
-# dist/VoucherReorder-0.1.0-Setup.exe
-# dist/VoucherReorder-0.1.0-sources.zip
-# dist/SHA256SUMS.txt
 ```
 
-On Windows, install NSIS and 7-Zip (or use `windows-latest`), then run
-`python scripts/build_windows.py`. The script downloads **SHA-256-pinned** upstream
-Windows binaries and corresponding sources listed in `packaging/dependencies.json`.
-It packages official Windows binaries on Linux; it does not claim to cross-compile
-CPython, Ghostscript or Sumatra themselves. `--stage-only` prepares a payload without
-compiling NSIS. First build needs internet; downloads are cached and rechecked.
+Outputs are in `dist/`: the installer, matching `-sources.zip`, and `SHA256SUMS.txt`.
+The script packages official x64 Windows binaries from SHA-256-pinned downloads in
+`packaging/dependencies.json`; it does not claim to cross-compile those upstream
+programs. `--stage-only` prepares files; `--version 0.2.1` overrides the packaging
+version for upgrade tests (no tag/release is created). Installations need no network
+in PDF mode. Virtual setup may download Microsoft's signature-checked C++ runtime.
 
-The installer is unsigned. Setup may fetch Microsoft's signed C++ system runtime
-from Microsoft if absent; this requires internet. This proprietary prerequisite is
-**not bundled as an extra redistributable**. The installer verifies its Authenticode
-signature before executing it. The official Python runtime contains its customary
-Microsoft system-runtime DLLs. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[CI](.github/workflows/build.yml) runs Linux tests; builds on `windows-latest`;
+checks PowerShell/UI construction, the packaged runtime and optional-printer logic;
+and installs, upgrades, refuses a downgrade, repairs and uninstalls in an actual
+standard-user Windows account. Artifacts include matching sources. Future `v*` tag
+pushes attach the same files to a Release. Hardware/QuickBooks testing is separate.
+Win10/11 **x64** are the supported targets; ARM64/x64-emulation is not yet qualified
+and no native ARM64 installer is supplied.
 
-[Windows build workflow](.github/workflows/build.yml) tests Linux, builds on
-`windows-latest`, checks PowerShell syntax and the packaged runtime, and uploads the
-installer **together with corresponding source and checksums**. A future `v*` tag
-push attaches those same files to a GitHub Release. No tag or release is needed
-for PR builds. The workflow does not merge branches.
+## License and technical references
 
-## License
+GPL-3.0-or-later, without warranty; the first branch commit replaced the original
+MIT license with the [full official GPLv3 text](LICENSE). Third-party components
+retain their licenses: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Always provide
+the matching source archive alongside the installer.
 
-Copyright (C) 2026 Voucher Reorder contributors. Licensed under GNU GPL version 3
-or (at your option) any later version: **GPL-3.0-or-later**, without warranty.
-[LICENSE](LICENSE) contains the full official text fetched from GNU. The first
-implementation-branch commit replaces the original MIT license. Third-party
-components retain their own licenses and notices; see
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Always distribute the source archive
-alongside the installer, including on mirrors.
+Sources: [Microsoft driver installation permissions](https://learn.microsoft.com/en-us/windows-hardware/drivers/print/point-and-print-with-packages),
+[Windows LPR port options](https://learn.microsoft.com/en-us/powershell/module/printmanagement/add-printerport),
+[Sumatra printing options](https://www.sumatrapdfreader.org/docs/Command-line-arguments),
+[Ghostscript vector output](https://ghostscript.readthedocs.io/en/latest/VectorDevices.html).

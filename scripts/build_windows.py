@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import tarfile
+import tomllib
 import urllib.request
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -68,7 +69,13 @@ def collect_notices(source, target):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--stage-only", action="store_true")
+    parser.add_argument("--version", help="Three-part packaging version override for upgrade tests")
     args = parser.parse_args()
+    version = args.version or tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+    import re
+
+    if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+        raise ValueError("Version must be major.minor.patch")
     dependencies = json.loads((ROOT / "packaging/dependencies.json").read_text())
     files = {key: download(value) for key, value in dependencies.items()}
     stage = ROOT / "build/windows"
@@ -86,6 +93,9 @@ def main():
     for name in DOCS:
         shutil.copy2(ROOT / name, stage / name)
     shutil.copy2(ROOT / "USER_GUIDE.md", stage / "USER_GUIDE.txt")
+    (stage / "PACKAGE.json").write_text(
+        json.dumps({"identity": "org.voucher-reorder.desktop", "version": version})
+    )
     vendor = stage / "vendor"
     gs = vendor / "ghostscript"
     sevenzip = (
@@ -126,12 +136,12 @@ def main():
     except subprocess.CalledProcessError:
         revision = "source-archive-build"
     (stage / "BUILD_INFO.json").write_text(
-        json.dumps({"version": "0.1.0", "revision": revision, "dependencies": dependencies}, indent=2)
+        json.dumps({"version": version, "revision": revision, "dependencies": dependencies}, indent=2)
     )
     (stage / "SOURCE.txt").write_text(
         "Voucher Reorder is GPL-3.0-or-later. Ghostscript remains AGPL-3.0-or-later.\n"
         "Corresponding source and original notices accompany this installer as\n"
-        "VoucherReorder-0.1.0-sources.zip in the SAME Actions artifact or Release.\n"
+        f"VoucherReorder-{version}-sources.zip in the SAME Actions artifact or Release.\n"
         "https://github.com/matthew-nigh/voucher-reorder\n"
         "Keep the source archive available alongside every binary redistribution.\n"
         "See THIRD_PARTY_NOTICES.md for licenses and upstream build instructions.\n",
@@ -140,7 +150,9 @@ def main():
     dist = ROOT / "dist"
     dist.mkdir(exist_ok=True)
     # Source distribution uses an explicit allowlist: no local user data, credentials, or downloads outside pins.
-    with zipfile.ZipFile(dist / "VoucherReorder-0.1.0-sources.zip", "w", zipfile.ZIP_DEFLATED) as archive:
+    with zipfile.ZipFile(
+        dist / f"VoucherReorder-{version}-sources.zip", "w", zipfile.ZIP_DEFLATED
+    ) as archive:
         for key, path in files.items():
             if key.endswith("-source"):
                 archive.write(path, "upstream/" + path.name)
@@ -156,7 +168,7 @@ def main():
             Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "NSIS/makensis.exe"
         )
         prefix = "/" if os.name == "nt" else "-"
-        installer = dist / "VoucherReorder-0.1.0-Setup.exe"
+        installer = dist / f"VoucherReorder-{version}-Setup.exe"
         subprocess.run(
             [
                 compiler,
