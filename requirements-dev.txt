@@ -1,0 +1,5 @@
+-e .
+pytest==9.2.0
+reportlab==4.5.1
+PyMuPDF==1.28.2
+ruff==0.17.6

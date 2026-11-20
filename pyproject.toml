@@ -7,8 +7,18 @@ name = "voucher-reorder"
 version = "0.1.0"
 description = "Reorder voucher check sections for QuickBooks Desktop"
 requires-python = ">=3.11"
+dependencies = ["pypdf==6.9.1"]
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 
 [tool.setuptools.packages.find]
 include = ["voucher_reorder*"]
+
+[project.scripts]
+voucher-reorder = "voucher_reorder.app:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
