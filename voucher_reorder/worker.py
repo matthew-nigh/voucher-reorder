@@ -1,7 +1,9 @@
 """Per-user background worker, launched at sign-in; no SYSTEM-level document parsing."""
+
 import threading
 import time
-from .config import data_dir, load, atomic_json
+
+from .config import atomic_json, data_dir, load
 from .engine import reorder
 from .lpr import Server
 from .queue import Queue
@@ -21,16 +23,23 @@ def process_one(queue, settings, converter=convert, sender=forward):
                 reorder(job.parent / "input.pdf", job.parent / "output.pdf", settings)
                 # Production forwarding is letter portrait only. Engine supports arbitrary sizes.
                 from pypdf import PdfReader
+
                 for page in PdfReader(job.parent / "output.pdf").pages:
-                    if abs(float(page.mediabox.width)-612) > 0.1 or abs(float(page.mediabox.height)-792) > 0.1:
+                    if (
+                        abs(float(page.mediabox.width) - 612) > 0.1
+                        or abs(float(page.mediabox.height) - 792) > 0.1
+                    ):
                         raise ValueError("Only portrait Letter jobs can be forwarded.")
                 queue.update(job, "printing")
                 sender(job.parent / "output.pdf", settings.printer, data_dir() / "sumatra")
                 queue.update(job, "sent", "Sent to Windows printer queue; verify physical output.")
             except Exception:
                 was_printing = queue.read(job)["state"] == "printing"
-                queue.update(job, "review" if was_printing else "failed",
-                             "Check both Windows queues and physical output before reprinting.")
+                queue.update(
+                    job,
+                    "review" if was_printing else "failed",
+                    "Check both Windows queues and physical output before reprinting.",
+                )
                 return "A job needs attention. Open Voucher Reorder Settings. Check both printer queues and paper before reprinting."
             return
 
@@ -62,7 +71,10 @@ def serve():
                     # UI is visible only for an exceptional failed job.
                     threading.Thread(target=message, args=(warning,), daemon=True).start()
             except Exception:
-                atomic_json(root / "worker.json", {"heartbeat": time.time(), "error": "Settings or queue need attention."})
+                atomic_json(
+                    root / "worker.json",
+                    {"heartbeat": time.time(), "error": "Settings or queue need attention."},
+                )
             time.sleep(1)
     finally:
         server.shutdown()

@@ -1,10 +1,11 @@
 """Validated settings. Distances are inches; positive y is DOWN the paper."""
-from dataclasses import asdict, dataclass
+
 import json
 import math
 import os
-from pathlib import Path
 import tempfile
+from dataclasses import asdict, dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -19,7 +20,7 @@ class Settings:
     def __post_init__(self):
         if sorted(self.order) != [0, 1, 2] or any(type(i) is not int for i in self.order):
             raise ValueError("Choose each of Check, Stub 1, and Stub 2 once.")
-        if not isinstance(self.printer, str) or any(c in self.printer for c in '\r\n\0'):
+        if not isinstance(self.printer, str) or any(c in self.printer for c in "\r\n\0"):
             raise ValueError("Invalid printer name.")
         if self.printer.casefold() == "voucher reorder":
             raise ValueError("Select your physical printer, not Voucher Reorder.")

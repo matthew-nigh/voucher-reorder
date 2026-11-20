@@ -1,8 +1,9 @@
 """Bounded, loopback-only RFC 1179 receive-job subset for Windows TCP/IP monitor."""
+
 import os
-from pathlib import Path
 import socketserver
 import tempfile
+from pathlib import Path
 
 MAX_JOB = 100 * 1024 * 1024
 

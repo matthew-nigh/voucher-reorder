@@ -1,11 +1,13 @@
 """Crash-aware queue. Never automatically retry an attempted physical print."""
+
 import hashlib
 import json
-from pathlib import Path
 import shutil
 import threading
 import time
 import uuid
+from pathlib import Path
+
 from .config import atomic_json
 
 RETENTION = 24 * 3600
@@ -53,8 +55,10 @@ class Queue:
             folder = self.root / f"{time.time_ns()}-{uuid.uuid4().hex}"
             folder.mkdir(mode=0o700)
             shutil.move(str(path), folder / "input.ps")
-            atomic_json(folder / "state.json", {"state": "queued", "created": time.time(),
-                "digest": digest, "message": "Waiting to print"})
+            atomic_json(
+                folder / "state.json",
+                {"state": "queued", "created": time.time(), "digest": digest, "message": "Waiting to print"},
+            )
 
     def expire(self):
         with self.lock:

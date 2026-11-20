@@ -1,10 +1,11 @@
 """CLI is for packaging/tests; office users only see the native settings window."""
+
 import argparse
 import json
-import os
-from pathlib import Path
 import tempfile
 import time
+from pathlib import Path
+
 from . import alignment
 from .config import data_dir, load, save
 from .engine import reorder
@@ -12,7 +13,22 @@ from .engine import reorder
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["desktop-settings", "settings", "worker", "register", "alignment", "validate", "status", "discard", "stop"], nargs="?", default="settings")
+    parser.add_argument(
+        "command",
+        choices=[
+            "desktop-settings",
+            "settings",
+            "worker",
+            "register",
+            "alignment",
+            "validate",
+            "status",
+            "discard",
+            "stop",
+        ],
+        nargs="?",
+        default="settings",
+    )
     parser.add_argument("--config", type=Path)
     args = parser.parse_args()
     root = data_dir()
@@ -20,15 +36,19 @@ def main():
     config = args.config or root / "settings.json"
     if args.command == "desktop-settings":
         from .windows import launch_desktop_settings
+
         launch_desktop_settings()
     elif args.command == "worker":
         from .worker import serve
+
         serve()
     elif args.command == "register":
         from .windows import register_user
+
         register_user()
     elif args.command == "settings":
-        from .windows import powershell, run, register_user
+        from .windows import powershell, register_user, run
+
         register_user()
         if not config.exists():
             save(config, load(config))
@@ -40,6 +60,7 @@ def main():
             raise ValueError("Choose a physical printer.")
     elif args.command == "alignment":
         from .windows import forward
+
         settings = load(config)
         with tempfile.TemporaryDirectory(dir=root) as folder:
             source, output = Path(folder) / "sample.pdf", Path(folder) / "alignment.pdf"
@@ -53,7 +74,15 @@ def main():
             states.append(item["state"] + ": " + item["message"])
         heartbeat = root / "worker.json"
         active = heartbeat.exists() and time.time() - json.loads(heartbeat.read_text())["heartbeat"] < 15
-        print(("Background app running." if active else "Background app is not responding. Close and reopen Settings.") + "\n" + "\n".join(states[-10:]))
+        print(
+            (
+                "Background app running."
+                if active
+                else "Background app is not responding. Close and reopen Settings."
+            )
+            + "\n"
+            + "\n".join(states[-10:])
+        )
     elif args.command in ("stop", "discard"):
         (root / "stop").touch()
         for _ in range(150):
@@ -64,11 +93,13 @@ def main():
             raise RuntimeError("Worker has not stopped. Check printer queues before trying again.")
         if args.command == "discard":
             from .queue import Queue
+
             queue = Queue(root / "jobs")
             for job in queue.jobs():
                 if queue.read(job)["state"] == "queued":
                     queue.update(job, "discarded", "Canceled by user")
             from .windows import register_user
+
             register_user()
 
 
