@@ -43,7 +43,7 @@ Section "Install"
   SetRegView 64
   SetShellVarContext current
   SetOutPath "$PLUGINSDIR"
-  File /oname=printer.ps1 "${STAGE}/packaging/printer.ps1"
+  File /oname=printer.ps1 "${STAGE}\packaging\printer.ps1"
   nsExec::ExecToStack '"$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\printer.ps1" preflight'
   Pop $0
   Pop $1
@@ -51,7 +51,7 @@ Section "Install"
     Abort "Printer preflight failed. See the setup message."
   ${EndIf}
   SetOutPath "$INSTDIR"
-  File /r "${STAGE}/*"
+  File /r "${STAGE}\*"
   nsExec::ExecToStack '"$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\packaging\printer.ps1" install'
   Pop $0
   Pop $1
