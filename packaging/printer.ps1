@@ -55,3 +55,4 @@ try {
     $null = [Windows.Forms.MessageBox]::Show("Optional virtual printer setup was not completed. PDF handoff remains available.`n`n$($_.Exception.Message)", 'Voucher Reorder', 'OK', 'Warning')
     exit 1
 }
+exit 0
