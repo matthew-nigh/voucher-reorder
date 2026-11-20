@@ -1,6 +1,6 @@
 # This is the ONLY elevated component. The application/installer remain per-user.
 param([ValidateSet('install','remove')][string]$Action,
-      [ValidatePattern('^S-1-[0-9]+(?:-[0-9]+){1,14}$')][string]$TargetSid)
+      [ValidatePattern('^S-1-[0-9]+(?:-[0-9]+){1,14}$')][string]$TargetSid, [switch]$NoDialogs)
 $ErrorActionPreference = 'Stop'
 $name = 'Voucher Reorder'
 $port = 'VoucherReorder_LPR'
@@ -50,6 +50,7 @@ try {
         throw
     }
 } catch {
+    if ($NoDialogs) { Write-Output $_.Exception.Message; exit 1 }
     Add-Type -AssemblyName System.Windows.Forms
     $null = [Windows.Forms.MessageBox]::Show("Optional virtual printer setup was not completed. PDF handoff remains available.`n`n$($_.Exception.Message)", 'Voucher Reorder', 'OK', 'Warning')
     exit 1

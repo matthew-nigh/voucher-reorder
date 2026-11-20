@@ -22,10 +22,10 @@ function Get-PrintJob { param($PrinterName) }
 function Test-Path { param($Path) return $true }
 function Get-Item { param($Path) return @{VersionInfo=@{FileVersionRaw=[version]'99.0.0.0'}} }
 # The success/removal paths do not show dialogs. Error UI is covered by Python fallback tests.
-& "$PSScriptRoot\..\packaging\printer.ps1" -Action install -TargetSid 'S-1-5-21-1-2-3-1001'
+& "$PSScriptRoot\..\packaging\printer.ps1" -Action install -TargetSid 'S-1-5-21-1-2-3-1001' -NoDialogs
 if ($LASTEXITCODE -ne 0 -or -not $script:printer -or -not $script:port) { throw 'Virtual setup failed' }
-& "$PSScriptRoot\..\packaging\printer.ps1" -Action install -TargetSid 'S-1-5-21-1-2-3-1001'
+& "$PSScriptRoot\..\packaging\printer.ps1" -Action install -TargetSid 'S-1-5-21-1-2-3-1001' -NoDialogs
 if ($LASTEXITCODE -ne 0) { throw 'Existing owned printer was not upgrade-safe' }
-& "$PSScriptRoot\..\packaging\printer.ps1" -Action remove -TargetSid 'S-1-5-21-1-2-3-1001'
+& "$PSScriptRoot\..\packaging\printer.ps1" -Action remove -TargetSid 'S-1-5-21-1-2-3-1001' -NoDialogs
 if ($LASTEXITCODE -ne 0 -or $script:printer -or $script:port) { throw 'Virtual cleanup failed' }
 Write-Output 'Virtual printer setup, original-user permission, reuse and cleanup passed with mocked printer APIs.'

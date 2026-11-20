@@ -52,6 +52,7 @@ jobs:
           & build/windows/runtime/python.exe scripts/smoke_packaged.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Exercise optional virtual printer setup logic
+        timeout-minutes: 2
         shell: powershell
         run: scripts/test_virtual_setup.ps1
       - name: Build upgrade-test installer
