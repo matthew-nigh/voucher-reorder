@@ -53,6 +53,9 @@ A custom spooler DLL would add deployment and stability risks. Our receiver
 implements the bounded receive-job subset of [RFC 1179](https://www.rfc-editor.org/rfc/rfc1179),
 accepts control/data in either order, and acknowledges only after durable admission.
 It binds **only** to loopback and ignores untrusted LPR filenames and user metadata.
+LPR itself has no authentication: other local processes can submit directly to the
+port. This release assumes a trusted, single-user workstation; the printer ACL does
+not make the TCP endpoint a multi-user security boundary.
 
 The signed Microsoft PostScript driver must be available in the target Windows
 image. Setup fails visibly if it is missing or legacy drivers are blocked (for

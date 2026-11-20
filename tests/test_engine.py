@@ -172,3 +172,56 @@ def test_settings_roundtrip_and_alignment(tmp_path):
     text = "".join(p.get_text() for p in pymupdf.open(tmp_path / "out.pdf"))
     for label in ("CHECK - VOID", "VOUCHER STUB 1", "VOUCHER STUB 2", "quarter-inch ticks"):
         assert label in text
+
+
+def test_embedded_image_bytes_are_preserved(tmp_path):
+    from PIL import Image
+    from reportlab.lib.utils import ImageReader
+
+    image = Image.new("RGB", (13, 17), color=(19, 113, 201))
+    image.putpixel((0, 0), (253, 7, 88))
+    source = io.BytesIO()
+    c = canvas.Canvas(source, pagesize=(612, 792))
+    c.drawImage(ImageReader(image), 72, 650, width=26, height=34)
+    c.save()
+    source.seek(0)
+    original = PdfReader(source).pages[0]["/Resources"]["/XObject"]
+    image_bytes = next(iter(original.values())).get_object().get_data()
+    source.seek(0)
+    out = tmp_path / "image.pdf"
+    reorder(source, out, Settings(order=(1, 2, 0)))
+    form = PdfReader(out).pages[0]["/Resources"]["/XObject"]["/Sheet"]
+    objects = form["/Resources"]["/XObject"]
+    assert len(objects) == 1
+    copied = next(iter(objects.values())).get_object()
+    assert copied["/Width"] == 13 and copied["/Height"] == 17
+    assert copied.get_data() == image_bytes
+    # Top-band image moved to bottom band at the same physical size.
+    assert pixel(pymupdf.open(out)[0], 85, 650) == (19, 113, 201)
+
+
+def test_mixed_sizes_and_empty_page(tmp_path):
+    writer = PdfWriter()
+    for size in [(612, 792), (503, 719), (842, 595)]:
+        writer.add_page(PdfReader(sample(size)).pages[0])
+    writer.add_blank_page(100, 200)
+    buf = io.BytesIO()
+    writer.write(buf)
+    buf.seek(0)
+    out = tmp_path / "mixed.pdf"
+    reorder(buf, out, Settings(order=(2, 1, 0)))
+    document = pymupdf.open(out)
+    assert len(document) == 4
+    for index, size in enumerate([(612, 792), (503, 719), (842, 595)]):
+        assert document[index].rect == pymupdf.Rect(0, 0, *size)
+        assert pixel(document[index], 10, 20) == (0, 0, 255)
+    assert document[3].get_text() == ""
+
+
+def test_vertical_nudge_cannot_bleed_into_next_slot(tmp_path):
+    out = tmp_path / "clipped.pdf"
+    reorder(sample(), out, Settings(order=(0, 1, 2), offsets=((0, 1), (0, 0), (0, 0))))
+    page = pymupdf.open(out)[0]
+    assert pixel(page, 10, 50) == (255, 255, 255)
+    assert pixel(page, 10, 200) == (255, 0, 0)
+    assert pixel(page, 10, 270) == (0, 255, 0)

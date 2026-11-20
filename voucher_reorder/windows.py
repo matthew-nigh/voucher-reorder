@@ -46,6 +46,15 @@ def convert(source, output):
 def forward(pdf, printer, appdata):
     if not printer or printer.casefold() == "voucher reorder":
         raise ValueError("Select a physical printer in Voucher Reorder Settings.")
+    appdata = Path(appdata)
+    appdata.mkdir(parents=True, exist_ok=True, mode=0o700)
+    preferences = appdata / "SumatraPDF-settings.txt"
+    if not preferences.exists():
+        preferences.write_text(
+            "RememberOpenedFiles = false\nRememberStatePerDocument = false\n"
+            "CheckForUpdates = false\nReuseInstance = false\n",
+            encoding="utf-8",
+        )
     run(
         [
             ROOT / "vendor/sumatra/SumatraPDF.exe",

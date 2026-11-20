@@ -149,3 +149,29 @@ def test_ghostscript_vector_pipeline(tmp_path):
     page = PdfReader(out).pages[0]
     assert "FAKE SAMPLE VOID" in page.extract_text()
     assert "/Font" in page["/Resources"]
+
+
+def test_final_ack_follows_durable_admission(tmp_path):
+    acks = []
+
+    def failed_admission(path):
+        assert path.exists()
+        assert len(acks) == 4  # final ACK has not been sent
+        raise OSError("simulated disk failure")
+
+    with pytest.raises(OSError):
+        receive(io.BytesIO(packet()), acks.append, tmp_path, failed_admission)
+    assert len(acks) == 4
+    assert not list(tmp_path.iterdir())
+
+
+def test_nonletter_is_rejected_before_physical_forward(tmp_path):
+    queue, job = enqueue(tmp_path)
+    calls = []
+
+    def odd_convert(source, output):
+        output.write_bytes(sample(size=(503, 719)).getvalue())
+
+    process_one(queue, Settings(printer="FAKE"), odd_convert, lambda *args: calls.append(args))
+    assert not calls
+    assert queue.read(job)["state"] == "failed"

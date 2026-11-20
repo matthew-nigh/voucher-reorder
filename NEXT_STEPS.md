@@ -69,6 +69,9 @@ order/split lines are in Settings. They remain unknown until Matthew supplies th
 
 - The Microsoft inbox PostScript driver may be unavailable or blocked. Setup must
   fail clearly; do not work around organizational security without the administrator.
+- The loopback LPR endpoint is unauthenticated; other local processes can submit
+  jobs directly. Printer ACLs do not protect that TCP endpoint. Use a trusted
+  single-user workstation.
 - LPR uses local port 515; an existing LPD service or another signed-in worker can
   conflict. The supported scope is one account. No new inbound firewall rule is used.
 - End-to-end fonts, MICR, paper origin, feed direction, printer margins and actual
