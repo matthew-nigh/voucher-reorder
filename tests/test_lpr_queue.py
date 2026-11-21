@@ -5,10 +5,10 @@ import threading
 import time
 
 import pytest
+from legacy_lpr import MAX_JOB, Server, receive
 from test_engine import sample
 
 from voucher_reorder.config import Settings, atomic_json
-from voucher_reorder.lpr import MAX_JOB, Server, receive
 from voucher_reorder.queue import Queue
 from voucher_reorder.worker import process_one
 

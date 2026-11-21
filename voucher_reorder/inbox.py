@@ -1,14 +1,13 @@
 """Receive closed PDFs without racing the PDF printer or modifying originals."""
 
-import tempfile
-from pathlib import Path
 import json
 import os
+import tempfile
 import time
 from contextlib import contextmanager
+from pathlib import Path
 
 from .bounded import execute
-
 from .config import atomic_json
 from .queue import MAX_JOB
 

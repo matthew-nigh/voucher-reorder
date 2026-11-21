@@ -65,8 +65,9 @@ def main():
     import winreg
 
     try:
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
-                            r"SYSTEM\CurrentControlSet\Control\Print\Printers\Voucher Reorder") as printer:
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Print\Printers\Voucher Reorder"
+        ) as printer:
             if winreg.QueryValueEx(printer, "Port")[0] == "VoucherReorder_LPR":
                 print("Remove or migrate the legacy LPR queue before updating or uninstalling.")
                 return 1

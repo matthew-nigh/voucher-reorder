@@ -165,3 +165,22 @@ def test_recovery_removes_payload_left_after_terminal_state_commit(tmp_path, sta
     restored = Queue(queue.root, recover=True)
     assert restored.read(job)["state"] == state
     assert not (job.parent / "input.pdf").exists()
+
+
+def test_over_budget_job_does_not_block_next_job(tmp_path):
+    from voucher_reorder.bounded import MAX_PAGES
+    from voucher_reorder.worker import process_one
+
+    batch = PdfWriter()
+    for _ in range(MAX_PAGES + 1):
+        batch.add_blank_page(612, 792)
+    stream = io.BytesIO()
+    batch.write(stream)
+    queue = Queue(tmp_path / "jobs")
+    queue.accept_bytes(stream.getvalue(), SETTINGS)
+    queue.accept_bytes(sample().getvalue(), SETTINGS)
+    sent = []
+    for _ in range(2):
+        process_one(queue, SETTINGS, sender=lambda *args: sent.append(True))
+    assert [queue.read(job)["state"] for job in queue.jobs()] == ["failed", "sent"]
+    assert sent == [True]

@@ -54,16 +54,20 @@ Section "Install or upgrade"
   ${GetBaseName} "$Candidate" $0
   StrCpy $Candidate "$INSTDIR\deployments\app-$0"
   SetOutPath "$Candidate"
+  ClearErrors
   File /r "${STAGE}\*"
+  IfErrors stageFailed
+  WriteUninstaller "$Candidate\Uninstall.next.exe"
+  IfErrors stageFailed
   nsExec::ExecToStack '"$Candidate\runtime\python.exe" "$Candidate\packaging\manage_install.py" install --root "$INSTDIR" --candidate "$Candidate"'
   Pop $0
   Pop $1
   ${If} $0 != 0
+    stageFailed:
     RMDir /r "$Candidate"
     SetErrorLevel 1
     Abort "Update was not activated. The previous installation and settings were retained."
   ${EndIf}
-  WriteUninstaller "$INSTDIR\Uninstall.exe"
 SectionEnd
 Function un.onInit
   !insertmacro LockInstallation

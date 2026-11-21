@@ -95,7 +95,10 @@ class Queue:
             if sum(self.read(j)["state"] in ("queued", "held") for j in self.jobs()) >= 100:
                 raise ValueError("The waiting queue is full. Open Job status.")
             total = sum(p.stat().st_size for p in self.root.glob("*/input.*"))
-            if total + len(payload) > 512 * 1024**2 or shutil.disk_usage(self.root).free < len(payload) + 256 * 1024**2:
+            if (
+                total + len(payload) > 512 * 1024**2
+                or shutil.disk_usage(self.root).free < len(payload) + 256 * 1024**2
+            ):
                 raise ValueError("Insufficient queue space.")
             folder = self.root / f"{time.time_ns()}-{uuid.uuid4().hex}"
             folder.mkdir(mode=0o700)

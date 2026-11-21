@@ -65,6 +65,7 @@ def cleanup(root, keep):
                         # A partial deletion must not lose the ownership marker for a later retry.
                         if folder.exists():
                             atomic_json(marker, manifest)
+                            (folder / ".retired").touch()
                     else:
                         time.sleep(0.1)
         except (OSError, ValueError):
@@ -104,6 +105,9 @@ def install(root: Path, candidate: Path, data: Path, integrate, timeout=150):
                 try:
                     integrate(candidate, manifest["version"])
                     publish(root, target)
+                    staged_uninstaller = candidate / "Uninstall.next.exe"
+                    if staged_uninstaller.exists():
+                        staged_uninstaller.replace(root / "Uninstall.exe")
                 except Exception:
                     if old:
                         integrate(root / "deployments" / old["directory"], old["version"])

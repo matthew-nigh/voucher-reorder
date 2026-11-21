@@ -18,8 +18,13 @@ def check(ok):
 
 def receive_one(root, settings):
     quarantine = root / "spool-review.json"
-    info = subprocess.run(powershell("retained_job.ps1", "-Quarantine", quarantine), check=True, capture_output=True, timeout=15,
-                          creationflags=subprocess.CREATE_NO_WINDOW)
+    info = subprocess.run(
+        powershell("retained_job.ps1", "-Quarantine", quarantine),
+        check=True,
+        capture_output=True,
+        timeout=15,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
     candidate = json.loads(info.stdout.decode("utf-8-sig"))
     if candidate is None:
         if quarantine.exists():
@@ -27,7 +32,7 @@ def receive_one(root, settings):
         return
     job_id = candidate["id"]
     key = candidate["key"]
-    if type(job_id) is not int or not 0 < job_id <= 0xffffffff:
+    if type(job_id) is not int or not 0 < job_id <= 0xFFFFFFFF:
         raise ValueError("Invalid Windows spool job.")
     api = c.WinDLL("winspool.drv", use_last_error=True)
     api.OpenPrinterW.argtypes = [w.LPWSTR, c.POINTER(w.HANDLE), w.LPVOID]
@@ -49,9 +54,10 @@ def receive_one(root, settings):
                 break
             if len(payload) + count.value > MAX_JOB:
                 raise ValueError("Retained job exceeds the size limit.")
-            payload.extend(buf.raw[:count.value])
-        Queue(root / "jobs").accept_bytes(payload, settings, "ps",
-            source=("spool:" + key, hashlib.sha256(payload).hexdigest()))
+            payload.extend(buf.raw[: count.value])
+        Queue(root / "jobs").accept_bytes(
+            payload, settings, "ps", source=("spool:" + key, hashlib.sha256(payload).hexdigest())
+        )
         # Keep the job handle open until the durable copy is acknowledged.
         printer = w.HANDLE()
         check(api.OpenPrinterW("Voucher Reorder", c.byref(printer), None))

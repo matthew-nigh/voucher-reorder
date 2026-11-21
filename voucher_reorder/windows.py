@@ -67,8 +67,21 @@ def forward(pdf, settings, appdata):
 
     if not printer or printer.casefold() == "voucher reorder":
         raise ValueError("Select a physical printer in Voucher Reorder Settings.")
-    run(powershell("print_pages.ps1", "-Printer", printer, "-PaperKind", settings.paper_kind,
-                   "-Tray", settings.tray, "-Pdf", pdf, "-Pages", pages))
+    run(
+        powershell(
+            "print_pages.ps1",
+            "-Printer",
+            printer,
+            "-PaperKind",
+            settings.paper_kind,
+            "-Tray",
+            settings.tray,
+            "-Pdf",
+            pdf,
+            "-Pages",
+            pages,
+        )
+    )
 
 
 def powershell(script, *args):

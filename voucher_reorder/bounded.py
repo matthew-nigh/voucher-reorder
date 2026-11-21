@@ -37,14 +37,26 @@ def constrain():
 
     class Basic(ctypes.Structure):
         _fields_ = [
-            ("process_time", ctypes.c_int64), ("job_time", ctypes.c_int64), ("flags", w.DWORD),
-            ("min_ws", size), ("max_ws", size), ("processes", w.DWORD), ("affinity", size),
-            ("priority", w.DWORD), ("scheduling", w.DWORD),
+            ("process_time", ctypes.c_int64),
+            ("job_time", ctypes.c_int64),
+            ("flags", w.DWORD),
+            ("min_ws", size),
+            ("max_ws", size),
+            ("processes", w.DWORD),
+            ("affinity", size),
+            ("priority", w.DWORD),
+            ("scheduling", w.DWORD),
         ]
 
     class Extended(ctypes.Structure):
-        _fields_ = [("basic", Basic), ("io", ctypes.c_uint64 * 6), ("process_memory", size),
-                    ("job_memory", size), ("peak_process", size), ("peak_job", size)]
+        _fields_ = [
+            ("basic", Basic),
+            ("io", ctypes.c_uint64 * 6),
+            ("process_memory", size),
+            ("job_memory", size),
+            ("peak_process", size),
+            ("peak_job", size),
+        ]
 
     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel.CreateJobObjectW.argtypes = [w.LPVOID, w.LPCWSTR]
@@ -55,30 +67,50 @@ def constrain():
     info = Extended()
     info.basic.flags = 0x2000 | 0x200  # KILL_ON_JOB_CLOSE | JOB_MEMORY
     info.job_memory = MEMORY
-    if not (job and kernel.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info))
-            and kernel.AssignProcessToJobObject(job, w.HANDLE(-1))):
+    if not (
+        job
+        and kernel.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info))
+        and kernel.AssignProcessToJobObject(job, w.HANDLE(-1))
+    ):
         raise ctypes.WinError(ctypes.get_last_error())
     # Retain the sole non-inheritable handle until exit, including forced termination.
 
 
 def execute(operation, path, settings=None):
     path = Path(path).resolve()
-    args = [sys.executable, "-m", "voucher_reorder.bounded", operation, str(path),
-            json.dumps(asdict(settings or Settings()))]
-    child = subprocess.Popen(args, cwd=Path(__file__).resolve().parents[1],
-                             start_new_session=os.name != "nt", stdin=subprocess.DEVNULL,
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    args = [
+        sys.executable,
+        "-m",
+        "voucher_reorder.bounded",
+        operation,
+        str(path),
+        json.dumps(asdict(settings or Settings())),
+    ]
+    child = subprocess.Popen(
+        args,
+        cwd=Path(__file__).resolve().parents[1],
+        start_new_session=os.name != "nt",
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
     deadline = time.monotonic() + TIMEOUT
     try:
         while child.poll() is None:
+            if operation == "receive" and ((path / "stop").exists() or (path / "maintenance.json").exists()):
+                raise ValueError("Spool receipt interrupted.")
             if time.monotonic() >= deadline:
                 raise ValueError(ERRORS[5])
             if operation == "prepare" and any(p.stat().st_size > MAX_OUTPUT for p in path.glob("*.pdf")):
                 raise ValueError(ERRORS[5])
             if operation == "print":
                 bitmap = path.parent / "page.bmp"
-                if bitmap.is_file() and bitmap.stat().st_size > MAX_OUTPUT:
+                try:
+                    size = bitmap.stat().st_size
+                except FileNotFoundError:
+                    size = 0
+                if size > MAX_OUTPUT:
                     raise ValueError(ERRORS[5])
             time.sleep(0.05)
         if child.returncode:
@@ -114,7 +146,11 @@ def main(operation, path, config):
     if operation == "prepare":
         if (path / "input.ps").exists() and not (path / "input.pdf").exists():
             convert(path / "input.ps", path / "input.pdf")
+        if (path / "input.pdf").stat().st_size > MAX_OUTPUT:
+            return 5
         reorder(path / "input.pdf", path / "output.pdf", settings)
+        if (path / "output.pdf").stat().st_size > MAX_OUTPUT:
+            return 5
         validate_pages(path / "output.pdf", settings)
         return 0
     if operation == "print":
@@ -127,7 +163,13 @@ if __name__ == "__main__":
     try:
         result = main(sys.argv[1], Path(sys.argv[2]), sys.argv[3])
     except ValueError as error:
-        result = 3 if str(error).startswith("PDF page size") else 4 if str(error).startswith("Flatten optional") else 5
+        result = (
+            3
+            if str(error).startswith("PDF page size")
+            else 4
+            if str(error).startswith("Flatten optional")
+            else 5
+        )
     except Exception:
         result = 5
     sys.exit(result)

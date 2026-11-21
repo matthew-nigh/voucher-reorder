@@ -3,8 +3,8 @@
 import threading
 import time
 
-from .config import Settings, atomic_json, data_dir, load
 from .bounded import execute
+from .config import Settings, atomic_json, data_dir, load
 from .inbox import Inbox
 from .locking import FileLock
 from .queue import Queue
@@ -23,6 +23,9 @@ def process_one(queue, settings, converter=convert, sender=forward):
             config = Settings(**state["settings"]) if "settings" in state else settings
             try:
                 queue.reconcile(job, state)
+            except OSError:
+                continue  # Keep this job queued until its receipt is durable.
+            try:
                 queue.update(job, "converting")
                 if state.get("kind", "ps") == "ps" and converter is not convert:
                     converter(job.parent / "input.ps", job.parent / "input.pdf")
@@ -43,20 +46,19 @@ def process_one(queue, settings, converter=convert, sender=forward):
                     str(error)
                     if type(error) is ValueError
                     and str(error).startswith(
-                        ("Flatten optional", "PDF page size", "Printer paper", "Set the printer", "The selected tray")
+                        (
+                            "Flatten optional",
+                            "PDF page size",
+                            "Printer paper",
+                            "Set the printer",
+                            "The selected tray",
+                        )
                     )
                     else "Inspect the real printer queue and paper before reprinting."
                 )
                 queue.update(job, "review" if attempted else "failed", detail)
                 return "A job needs attention. Open Voucher Reorder Job status before reprinting."
             return
-
-
-def accept_virtual(queue, path, root):
-    settings = load(root / "settings.json")
-    if not settings.printer:
-        raise ValueError("Choose a physical printer before receiving virtual jobs.")
-    return queue.accept(path, settings)
 
 
 def serve():
