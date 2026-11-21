@@ -73,10 +73,16 @@ public static class CheckedPrint {
             emf=CloseEnhMetaFile(recording); recording=IntPtr.Zero;
             if (emf==IntPtr.Zero || GetEnhMetaFileBits(emf,0,IntPtr.Zero)>64*1024*1024)
                 throw new IOException("Vector page unavailable or exceeds limit.");
-            bool raster=false, marks=false;
+            bool raster=false, marks=false; int rasterKind=0;
             RecordProc inspect=delegate(IntPtr unused,IntPtr table,IntPtr record,int count,IntPtr data) {
                 int kind=Marshal.ReadInt32(record);
-                if ((kind>=76 && kind<=81) || kind==114 || kind==116) raster=true;
+                // FillRect/PatBlt can encode a solid vector brush as source-free
+                // EMR_BITBLT. It carries no image and is safe to replay as a fill.
+                bool solidFill = kind==76 && Marshal.ReadInt32(record,4)>=100 &&
+                    Marshal.ReadInt32(record,88)==0 && Marshal.ReadInt32(record,96)==0 &&
+                    (Marshal.ReadInt32(record,40)==0x00F00021 || Marshal.ReadInt32(record,40)==0x00000042 || Marshal.ReadInt32(record,40)==0x00FF0062);
+                if (((kind>=76 && kind<=81) || kind==114 || kind==116) && !solidFill) { raster=true; rasterKind=kind; }
+                if (solidFill) marks=true;
                 if ((kind>=2 && kind<=8) || (kind>=42 && kind<=47) || (kind>=62 && kind<=64) ||
                     kind==83 || kind==84 || (kind>=85 && kind<=92) || kind==96 || kind==97) marks=true;
                 return 1;
@@ -84,7 +90,7 @@ public static class CheckedPrint {
             if (!EnumEnhMetaFile(IntPtr.Zero,emf,inspect,IntPtr.Zero,ref frame))
                 throw new IOException("Cannot verify vector page.");
             GC.KeepAlive(inspect);
-            if (raster) throw new IOException("PDF requires raster drawing; vector-only printing refused.");
+            if (raster) throw new IOException("PDF requires raster drawing; vector-only printing refused. EMF record="+rasterKind);
             if (!marks) throw new IOException("Blank vector page refused.");
             IntPtr result=emf; emf=IntPtr.Zero; return result;
         } finally {
