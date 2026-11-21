@@ -58,7 +58,8 @@ numbers, payee names, settings files or spool files to the public project.
 
 Printing preserves vector text and paths through the Windows driver. Use a vector
 PDF export: scanned/image PDFs, raster fallback and blank vector pages are refused.
-Batches can contain up to 250 pages; printing time scales with page count. Recheck
+The expected workload is ten pages or fewer per job; consecutive jobs run serially
+with a fresh bounded print process each time. Printing time scales with page count. Recheck
 alignment and MICR on the intended printer before using check stock.
 
 To remove machine provisioning, reconcile/cancel Windows queue jobs and uninstall

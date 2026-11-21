@@ -111,6 +111,7 @@ def print_run(args, code, timeout=120, capture=False):
 
 
 def forward(pdf, settings, appdata=None):
+    from .bounded import PRINT_PROBE_TIMEOUT, print_timeout
     from .printing import validate_pages
 
     printer = settings.printer
@@ -118,7 +119,7 @@ def forward(pdf, settings, appdata=None):
     result = print_run(
         powershell("printer_info.ps1", "-Printer", printer, "-PaperKind", settings.paper_kind),
         code=6,
-        timeout=30,
+        timeout=PRINT_PROBE_TIMEOUT,
         capture=True,
     )
     import json
@@ -148,7 +149,7 @@ def forward(pdf, settings, appdata=None):
             pages,
         ),
         code=7,
-        timeout=120 * (pages + 1),
+        timeout=print_timeout(pages),
     )
 
 

@@ -120,9 +120,11 @@ Provisioning metadata, executable hash and app version are checked before elevat
 An app upgrade with an older provisioning package falls back to PDF mode and explains
 how to enable the updated optional component. App installation itself needs no UAC.
 
-Processing allows 250 pages, 768 MiB of combined print-child/process-tree memory,
-and 256 MiB of expanded PDF content. Inspection/conversion have 120-second deadlines;
-printing gets 120 seconds times (page count + 1), plus supervisor startup allowance.
+The expected workload is ten pages or fewer per job, including consecutive jobs.
+Printing has a 384 MiB combined process-tree cap; PDF preparation retains its
+768 MiB cap, 250-page validation ceiling, and 256 MiB expanded-content limit. Inspection/conversion have 120-second deadlines;
+printing gets 60 seconds for startup plus 30 seconds per page (six minutes for ten
+pages), with a separate 30-second printer-probe allowance.
 The pinned, hash-verified PDFium DLL uses its vector EMF/GDI print mode. Text and
 paths remain vectors at the Windows driver boundary, at actual size with no fit,
 shrink or auto-rotation. Windows drivers control their own final device encoding;
@@ -133,9 +135,10 @@ rejected rather than silently rasterized; use a vector PDF export. Flatten optio
 content in the source application without converting text to images. Recheck physical
 alignment and MICR with the intended printer/stock after upgrading.
 
-CI prints a 52-page synthetic batch to Microsoft's PDF file port, checks every page
-for nonblank output and absence of image XObjects, and requires the worker tree's
-measured peak commit to stay below 600 MiB. Printer failures use distinct codes
+CI prints six consecutive ten-page jobs to Microsoft's PDF file port, checks every page
+for nonblank vector output, absence of image XObjects and sequential vector page IDs, and drains six queued jobs through the same worker, checking payload cleanup,
+zero waiting/spool backlog, and flat worker memory. It requires the print tree's
+measured peak commit to stay below 256 MiB per job, with less than 32 MiB variation across six jobs. Printer failures use distinct codes
 (configuration 6, vector/spool 7, timeout 8, unexpected termination 9) and an 8 KiB sanitized local
 `%LOCALAPPDATA%\VoucherReorder\print-error.log`; no document output is retained.
 

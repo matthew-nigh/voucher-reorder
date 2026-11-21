@@ -3,6 +3,7 @@
 import sys
 import time
 
+import pymupdf
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
@@ -18,7 +19,7 @@ def check_resources(resources):
             check_resources(obj.get("/Resources", {}))
 
 
-def verify(path, count):
+def verify(path, count, first=None):
     reader = PdfReader(path, strict=True)
     assert len(reader.pages) == count
     for page in reader.pages:
@@ -27,12 +28,29 @@ def verify(path, count):
         assert abs(float(page.mediabox.height) - 792) < 1
         check_resources(page["/Resources"])
 
+    with pymupdf.open(path) as printed:
+        for index, page in enumerate(printed):
+            drawings = page.get_drawings()
+            assert len(drawings) > 30, "Blank or incomplete voucher content"
+            if first is not None:
+                actual = 0
+                for bit in range(6):
+                    point = pymupdf.Point(483 + bit * 9, 28)
+                    if any(
+                        d["fill"] == (0, 0, 0)
+                        and any(item[0] == "re" and point in item[1] for item in d["items"])
+                        for d in drawings
+                    ):
+                        actual |= 1 << bit
+                assert actual == first + index, f"Page order/content mismatch: {actual} != {first + index}"
+
 
 if __name__ == "__main__":
     deadline = time.monotonic() + (60 if "--wait" in sys.argv else 0)
     while True:
         try:
-            verify(sys.argv[1], int(sys.argv[2]))
+            first = int(sys.argv[sys.argv.index("--first") + 1]) if "--first" in sys.argv else None
+            verify(sys.argv[1], int(sys.argv[2]), first)
             break
         except (OSError, PdfReadError, AssertionError):
             if time.monotonic() >= deadline:

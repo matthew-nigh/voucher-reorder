@@ -18,6 +18,10 @@ MAX_PAGES = 250
 MEMORY = 768 * 1024**2
 MAX_OUTPUT = 256 * 1024**2
 TIMEOUT = 120
+PRINT_MEMORY = 384 * 1024**2
+PRINT_STARTUP = 60
+PRINT_PER_PAGE = 30
+PRINT_PROBE_TIMEOUT = 30
 
 
 def peak_memory():
@@ -45,11 +49,18 @@ class LimitedOutput(io.BufferedWriter):
         return super().write(data)
 
 
-def constrain():
+def print_timeout(pages):
+    if type(pages) is not int or not 1 <= pages <= MAX_PAGES:
+        raise ValueError("Invalid print page count.")
+    return PRINT_STARTUP + PRINT_PER_PAGE * pages
+
+
+def constrain(operation="prepare"):
+    limit_memory = PRINT_MEMORY if operation == "print" else MEMORY
     if os.name != "nt":
         import resource
 
-        for limit, size in ((resource.RLIMIT_AS, MEMORY), (resource.RLIMIT_FSIZE, MAX_OUTPUT)):
+        for limit, size in ((resource.RLIMIT_AS, limit_memory), (resource.RLIMIT_FSIZE, MAX_OUTPUT)):
             resource.setrlimit(limit, (size, size))
         return
     from ctypes import wintypes as w
@@ -87,7 +98,7 @@ def constrain():
     job = kernel.CreateJobObjectW(None, None)
     info = Extended()
     info.basic.flags = 0x2000 | 0x200  # KILL_ON_JOB_CLOSE | JOB_MEMORY
-    info.job_memory = MEMORY
+    info.job_memory = limit_memory
     if not (
         job
         and kernel.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info))
@@ -133,7 +144,7 @@ def execute(operation, path, settings=None):
     )
     errors = ErrorCapture(child.stderr)
     started = time.monotonic()
-    deadline = started + TIMEOUT
+    deadline = started + (PRINT_STARTUP if operation == "print" else TIMEOUT)
     budget_loaded = False
     try:
         while child.poll() is None:
@@ -147,7 +158,7 @@ def execute(operation, path, settings=None):
                 try:
                     pages = json.loads(budget_file.read_text())["pages"]
                     if type(pages) is int and 1 <= pages <= MAX_PAGES:
-                        deadline = started + TIMEOUT * (pages + 2)
+                        deadline = started + print_timeout(pages) + PRINT_PROBE_TIMEOUT
                         budget_loaded = True
                 except (OSError, ValueError, KeyError):
                     pass  # Atomic publication may not yet be visible.
@@ -174,7 +185,7 @@ def execute(operation, path, settings=None):
 
 
 def main(operation, path, config):
-    constrain()
+    constrain(operation)
     from pypdf import PdfReader
 
     from .engine import reorder

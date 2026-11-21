@@ -116,5 +116,5 @@ The detailed scenarios and expected results are in TESTING_ON_WINDOWS.md.
 The Windows follow-up embeds the matching provisioning package in the main setup;
 one optional UAC installs and configures it. Its separate Apps uninstaller removes
 an empty owned queue. A mismatched package after an app upgrade leaves PDF mode
-usable with a clear update instruction. CI additionally verifies a 52-page vector
-file-port batch and peak memory, plus real provisioning install/upgrade/uninstall.
+usable with a clear update instruction. CI additionally verifies six consecutive ten-page vector
+file-port jobs and peak memory, plus real provisioning install/upgrade/uninstall.

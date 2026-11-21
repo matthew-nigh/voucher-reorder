@@ -9,8 +9,8 @@ The Windows follow-up diagnosed the original CI failure using bounded, sanitized
 stderr capture: `OutOfMemoryException` in the 600-DPI bitmap allocation. That path
 has been replaced with pinned PDFium vector EMF/GDI printing, with preflight refusal
 of bitmap fallback and blank pages. Printing deadlines scale with page count. CI
-now requires a 52-page, nonblank, image-free file-port output and a measured Windows
-Job peak below 600 MiB (the process-tree cap stays 768 MiB).
+now requires six consecutive ten-page jobs with nonblank, image-free file-port output and a measured Windows
+Job peak below 256 MiB per job, flat across jobs (the print-tree cap is 384 MiB).
 
 The main installer embeds a matching, hash-checked provisioning package and can
 install/configure it with one optional UAC elevation. Provisioning has its own
@@ -60,7 +60,7 @@ modify installed applications or bind the real LPR port.
 
 | Finding | Severity | Status | Change and remaining validation |
 | --- | --- | --- | --- |
-| SR-01 | High | Mitigated | pypdf 7.1.1 with matching wheel/source hashes. Separate processes bound time, memory and page count. PDF output writes are capped before extending files. Windows CI measures peak process-tree memory on a 52-page vector batch; timeout and error-log regressions are covered. |
+| SR-01 | High | Mitigated | pypdf 7.1.1 with matching wheel/source hashes. Separate processes bound time, memory and page count. PDF output writes are capped before extending files. Windows CI measures peak process-tree memory on six consecutive ten-page vector jobs; timeout and error-log regressions are covered. |
 | SR-02 | High | Mitigated | Owner-restricted, unshared Windows spool queue retains RAW jobs on a local NUL: port. No legacy port-515 queue was deployed; it no longer blocks per-user update/uninstall. Two-account access and offline handoff need native validation. |
 | SR-03 | High | Mitigated; bundled provisioning | Main setup embeds the version-matched admin package; one optional elevation installs/configures its protected native launcher/scripts. Separate package uninstall is supplied. Runtime staging and execution use the protected directory. Alternate-credential UAC and installer provenance require native acceptance and trusted distribution. |
 | SR-04 | Medium | Fixed | A rejected file signature suppresses repeated parsing. An Inbox error allows other files and queued jobs to proceed. |
@@ -68,7 +68,7 @@ modify installed applications or bind the real LPR port.
 | SR-06 | Medium | Fixed | Layered PDFs with optional-content catalog configuration are rejected with a flattening instruction. |
 | SR-07 | Medium | Mitigated | Install and uninstall share an exclusive per-user handle before extraction. Cleanup targets retired activations. Uninstaller publication is staged. Native concurrent and disk-full tests remain pending. |
 | SR-09 | Medium | Mitigated | Removed the production LPR server. Bounded, cancellable spool reads quarantine interrupted jobs. Private admission reserves disk space and caps aggregate input. Windows controls its own spool storage. |
-| SR-10 | Medium | Mitigated; vector path | Replaced raster printing with pinned PDFium vector EMF and checked GDI calls; all pages preflight before StartDoc, raster fallback/blank pages fail closed, and CI verifies 52 vector output pages. Uncertain attempts enter review. Native failure injection, printer compatibility and MICR checks remain pending. |
+| SR-10 | Medium | Mitigated; vector path | Replaced raster printing with pinned PDFium vector EMF and checked GDI calls; all pages preflight before StartDoc, raster fallback/blank pages fail closed, and CI verifies 60 vector output pages in order. Uncertain attempts enter review. Native failure injection, printer compatibility and MICR checks remain pending. |
 | SR-08 | Low | Fixed | Startup and periodic cleanup retry terminal payload deletion while preserving delivery state. |
 | SR-11 | Low | Mitigated | Actions use full SHAs, Python tooling has a hashed lock, and builds record native tool versions. Release reviewers, signing and hosted toolchain trust remain external controls. |
 
