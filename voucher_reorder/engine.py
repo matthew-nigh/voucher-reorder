@@ -67,11 +67,12 @@ def reorder(source, destination: str | Path, settings: Settings) -> None:
         )
         commands = []
         top = 0.0
-        for source_index in settings.order:
+        for section in settings.order:
+            source_index = settings.source_order.index(section)
             band_height = edges[source_index + 1] - edges[source_index]
             source_bottom = height - edges[source_index + 1]
             target_bottom = height - top - band_height
-            dx, dy = (float(n) * 72 for n in settings.offsets[source_index])
+            dx, dy = (float(n) * 72 for n in settings.offsets[section])
             # Outer clip fixes the destination slot; inner clip selects original band.
             # Nudges move content inside the slot without leaking into another check stub.
             commands.append(

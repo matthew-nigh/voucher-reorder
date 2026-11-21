@@ -18,11 +18,10 @@ class Settings:
     paper_height: float = 11.0
     tray: int = 0
 
+    source_order: tuple[int, int, int] = (0, 1, 2)
     order: tuple[int, int, int] = (1, 0, 2)
     boundaries: tuple[float, float] | None = None
     offsets: tuple[tuple[float, float], ...] = ((0, 0), (0, 0), (0, 0))
-    quickbooks_version: str = "Unknown"
-    printer_model: str = "Unknown"
 
     def __post_init__(self):
         if self.mode not in ("pdf", "virtual") or type(self.watch_inbox) is not bool:
@@ -34,8 +33,9 @@ class Settings:
         if any(not math.isfinite(n) or not 2 <= n <= 40 for n in (self.paper_width, self.paper_height)):
             raise ValueError("Paper dimensions must be between 2 and 40 inches.")
 
-        if sorted(self.order) != [0, 1, 2] or any(type(i) is not int for i in self.order):
-            raise ValueError("Choose each of Check, Stub 1, and Stub 2 once.")
+        for order in (self.source_order, self.order):
+            if sorted(order) != [0, 1, 2] or any(type(i) is not int for i in order):
+                raise ValueError("Choose each of Check, Stub 1, and Stub 2 once in each order.")
         if not isinstance(self.printer, str) or any(c in self.printer for c in "\r\n\0"):
             raise ValueError("Invalid printer name.")
         if self.printer.casefold() == "voucher reorder":
@@ -79,8 +79,16 @@ def load(path: Path) -> Settings:
     if not path.exists():
         return Settings()
     raw = json.loads(path.read_text(encoding="utf-8-sig"))
-    return Settings(**raw)
+    return from_dict(raw)
 
 
 def save(path: Path, settings: Settings):
     atomic_json(path, asdict(settings))
+
+
+def from_dict(raw) -> Settings:
+    """Migrate v0.2.0 settings and immutable queued-job snapshots."""
+    raw = dict(raw)
+    raw.pop("quickbooks_version", None)
+    raw.pop("printer_model", None)
+    return Settings(**raw)

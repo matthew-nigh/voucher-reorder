@@ -4,7 +4,7 @@ import threading
 import time
 
 from .bounded import ERRORS, execute
-from .config import Settings, atomic_json, data_dir, load
+from .config import atomic_json, data_dir, from_dict, load
 from .inbox import Inbox
 from .locking import FileLock
 from .queue import Queue
@@ -20,7 +20,7 @@ def process_one(queue, settings, converter=convert, sender=forward):
             if state["state"] != "queued":
                 continue
             # Existing alpha jobs have no immutable settings snapshot.
-            config = Settings(**state["settings"]) if "settings" in state else settings
+            config = from_dict(state["settings"]) if "settings" in state else settings
             try:
                 queue.reconcile(job, state)
             except OSError:

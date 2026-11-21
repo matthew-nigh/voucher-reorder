@@ -195,3 +195,27 @@ def test_incomplete_encrypted_pdf_not_admitted(tmp_path):
     writer.write(source)
     with pytest.raises(ValueError, match="unencrypted"):
         read_pdf(source)
+
+
+def test_v020_settings_and_held_job_migrate(tmp_path):
+    legacy = asdict(config())
+    del legacy["source_order"]
+    legacy.update(quickbooks_version="2024", printer_model="Old printer")
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps(legacy))
+    settings = load(path)
+    assert settings.source_order == (0, 1, 2)
+    assert settings.order == list(config().order)
+    save(path, settings)
+    assert "quickbooks_version" not in json.loads(path.read_text())
+    assert "printer_model" not in json.loads(path.read_text())
+    queue = Queue(tmp_path / "jobs")
+    queue.accept_bytes(sample().getvalue(), settings)
+    job = queue.jobs()[0]
+    state = queue.read(job)
+    state["settings"] = legacy
+    job.write_text(json.dumps(state))
+    calls = []
+    process_one(queue, settings, sender=lambda p, s, a: calls.append(s))
+    assert queue.read(job)["state"] == "sent"
+    assert calls[0].source_order == (0, 1, 2)

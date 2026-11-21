@@ -225,3 +225,55 @@ def test_vertical_nudge_cannot_bleed_into_next_slot(tmp_path):
     assert pixel(page, 10, 50) == (255, 255, 255)
     assert pixel(page, 10, 200) == (255, 0, 0)
     assert pixel(page, 10, 270) == (0, 255, 0)
+
+
+@pytest.mark.parametrize("source_order", list(itertools.permutations(range(3))))
+@pytest.mark.parametrize("order", list(itertools.permutations(range(3))))
+@pytest.mark.parametrize("boundaries", [None, (2.75, 7)])
+@pytest.mark.parametrize("nudged", [False, True])
+def test_every_input_output_combination(tmp_path, source_order, order, boundaries, nudged):
+    offsets = ((0.125, 0.125), (-0.125, -0.125), (0.25, -0.25)) if nudged else ((0, 0),) * 3
+    settings = Settings(source_order=source_order, order=order, boundaries=boundaries, offsets=offsets)
+    out = tmp_path / "out.pdf"
+    reorder(sample(boundaries=boundaries, pages=2), out, settings)
+    edges = settings.edges(792)
+    document = pymupdf.open(out)
+    for page_number, page in enumerate(document):
+        top = 0
+        for section in order:
+            position = source_order.index(section)
+            height = edges[position + 1] - edges[position]
+            dx, dy = (n * 72 for n in offsets[section])
+            assert pixel(page, 35 + dx, top + 95 + dy) == (0, 0, 0)
+            assert pixel(page, 100, top + height / 2) == tuple(int(n * 255) for n in COLORS[position])
+            block = next(b for b in page.get_text("blocks") if f"PAGE {page_number} BAND {position}" in b[4])
+            assert block[0] == pytest.approx(72 + dx, abs=0.01)
+            assert block[3] == pytest.approx(top + 64.186 + dy, abs=0.02)
+            if dx > 0:
+                assert pixel(page, 2, top + height / 2) == (255, 255, 255)
+            if dy > 0:
+                assert pixel(page, 100, top + 2) == (255, 255, 255)
+            if dy < 0:
+                assert pixel(page, 100, top + height - 2) == (255, 255, 255)
+            top += height
+        assert top == 792
+    form = PdfReader(out).pages[0]["/Resources"]["/XObject"]["/Sheet"]
+    assert "/Font" in form["/Resources"] and "/XObject" not in form["/Resources"]
+
+
+@pytest.mark.parametrize("source_order", list(itertools.permutations(range(3))))
+def test_alignment_labels_follow_source_order(tmp_path, source_order):
+    source = tmp_path / "alignment.pdf"
+    create(source, Settings(source_order=source_order))
+    page = pymupdf.open(source)[0]
+    for position, section in enumerate(source_order):
+        from voucher_reorder.alignment import LABELS
+
+        text = page.get_text(clip=pymupdf.Rect(0, position * 264, 612, (position + 1) * 264))
+        assert LABELS[section] in text
+
+
+@pytest.mark.parametrize("source_order", [(0, 0, 1), (0, 1, True), (0, 1), (0, 1, 3)])
+def test_invalid_source_order(source_order):
+    with pytest.raises(ValueError, match="each order"):
+        Settings(source_order=source_order)

@@ -34,7 +34,7 @@ def create(path, settings: Settings):
     for i in range(3):
         top, bottom = height - edges[i], height - edges[i + 1]
         ops.append(f"18 {bottom + 18:.6f} {width - 36:.6f} {top - bottom - 36:.6f} re S")
-        text(30, top - 42, 16, LABELS[i])
+        text(30, top - 42, 16, LABELS[settings.source_order[i]])
         text(30, top - 62, 10, "TOP EDGE above | LEFT edge here | RIGHT edge at frame")
         text(30, bottom + 26, 10, "BOTTOM EDGE below - Frame is 0.25 inch inside section")
         text(30, top - 82, 10, "Ruler: quarter-inch ticks; numbered marks are whole inches")
