@@ -198,10 +198,18 @@ def main():
                 [
                     compiler,
                     f"/DHELPER={helper}",
-                    f"/DOUTPUT={dist / 'VoucherReorder-Provisioning.exe'}",
+                    f"/DVERSION={version}",
+                    f"/DOUTPUT={dist / f'VoucherReorder-{version}-Provisioning.exe'}",
                     str(ROOT / "packaging/provision.nsi"),
                 ],
                 check=True,
+            )
+            provisioning = stage / "provisioning"
+            provisioning.mkdir()
+            package = dist / f"VoucherReorder-{version}-Provisioning.exe"
+            shutil.copy2(package, provisioning / "Setup.exe")
+            (provisioning / "package.json").write_text(
+                json.dumps({"version": version, "sha256": hashlib.sha256(package.read_bytes()).hexdigest()})
             )
         installer = dist / f"VoucherReorder-{version}-Setup.exe"
         subprocess.run(
