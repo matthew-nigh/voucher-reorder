@@ -184,3 +184,22 @@ def test_over_budget_job_does_not_block_next_job(tmp_path):
         process_one(queue, SETTINGS, sender=lambda *args: sent.append(True))
     assert [queue.read(job)["state"] for job in queue.jobs()] == ["failed", "sent"]
     assert sent == [True]
+
+
+def test_worker_deadline_reaps_busy_process(tmp_path, monkeypatch):
+    from voucher_reorder import bounded
+
+    popen = subprocess.Popen
+    children = []
+
+    def launch_sleeper(args, **kwargs):
+        child = popen([sys.executable, "-c", "import time; time.sleep(30)"], **kwargs)
+        children.append(child)
+        return child
+
+    monkeypatch.setattr(bounded.subprocess, "Popen", launch_sleeper)
+    monkeypatch.setattr(bounded, "TIMEOUT", 0.1)
+    with pytest.raises(ValueError, match="processing failed"):
+        bounded.execute("inspect", tmp_path / "unused.pdf")
+    assert len(children) == 1
+    assert children[0].poll() is not None

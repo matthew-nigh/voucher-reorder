@@ -4,8 +4,8 @@ The original review covered `codex/initial-build` at `efec173`. The status table
 records the remediation on `codex/security-fixes`. The evidence, reproductions
 and recommendations below the table describe the reviewed version.
 
-The updated suite passed on Linux with Python 3.12: **82 passed** (71 original,
-10 promoted security regressions and one new page-budget/queue-progress test).
+The updated suite passed on Linux with Python 3.12: **83 passed** (71 original,
+10 promoted security regressions and two new process-deadline and queue-progress tests).
 Ruff lint and formatting passed. Both pypdf artifact hashes matched. The x64 provisioning launcher cross-compiled, and NSIS 3.11 compiled both installer scripts with a staging fixture. Native spooler, UAC, GDI and physical-printer
 acceptance on Windows 10/11 remain outstanding.
 
