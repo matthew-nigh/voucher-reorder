@@ -6,13 +6,25 @@ $data = Join-Path $env:LOCALAPPDATA 'VoucherReorder'
 $protected = Join-Path $env:ProgramFiles 'Voucher Reorder Provisioning'
 function Setup($path,$virtual) {
     $arguments = if ($virtual) { '/S /VIRTUAL=1' } else { '/S' }
+    Write-Output "Running setup: $([IO.Path]::GetFileName($path)); virtual=$virtual"
     $p = Start-Process (Resolve-Path $path) -ArgumentList $arguments -Wait -PassThru
     if ($p.ExitCode) { throw "Integrated setup failed: $($p.ExitCode)" }
 }
 function Check($version,$mode) {
     $current = Get-Content (Join-Path $root 'current.json') -Raw | ConvertFrom-Json
     $config = Get-Content (Join-Path $data 'settings.json') -Raw | ConvertFrom-Json
-    if ($current.version -ne $version -or $config.mode -ne $mode) { throw 'Unexpected app version or operating mode' }
+    Write-Output "Expected $version/$mode; got $($current.version)/$($config.mode)"
+    if ($current.version -ne $version -or $config.mode -ne $mode) {
+        Get-Content (Join-Path $data 'mode-status.txt') -ErrorAction SilentlyContinue
+        Get-Content (Join-Path $protected 'version.txt') -ErrorAction SilentlyContinue
+        # CI contains only synthetic state. Run the installed script directly to
+        # expose the underlying machine setup error, then fail the original check.
+        if (Test-Path (Join-Path $protected 'printer.ps1')) {
+            $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+            & (Join-Path $PSHOME 'powershell.exe') -NoProfile -ExecutionPolicy Bypass -File (Join-Path $protected 'printer.ps1') -Action install -TargetSid $sid -NoDialogs
+        }
+        throw 'Unexpected app version or operating mode'
+    }
     if ($mode -eq 'virtual') {
         if ([IO.File]::ReadAllText((Join-Path $protected 'version.txt')) -ne $version) { throw 'Provisioning version mismatch' }
         $printer = Get-Printer -Name 'Voucher Reorder'
