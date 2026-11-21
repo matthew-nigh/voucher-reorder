@@ -1,12 +1,10 @@
 param([ValidateSet('install','remove')][string]$Action)
 $ErrorActionPreference = 'Stop'
 $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-$script = Join-Path $PSScriptRoot 'printer.ps1'
-# Pass the original user's SID even if UAC uses a different administrator account.
-$arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $script + '" -Action ' + $Action + ' -TargetSid ' + $sid
+$base = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFiles)
+$helper = Join-Path $base 'Voucher Reorder Provisioning\Provision.exe'
+if (-not [IO.File]::Exists($helper)) { exit 1 }
 try {
-    $process = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList $arguments -Verb RunAs -Wait -PassThru
+    $process = Start-Process $helper -ArgumentList @($Action,$sid) -WorkingDirectory (Split-Path $helper) -Verb RunAs -Wait -PassThru
     exit $process.ExitCode
-} catch {
-    exit 10 # UAC declined, credentials unavailable, or policy blocked elevation
-}
+} catch { exit 10 }

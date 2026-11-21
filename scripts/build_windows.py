@@ -168,6 +168,13 @@ def main():
             Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "NSIS/makensis.exe"
         )
         prefix = "/" if os.name == "nt" else "-"
+        if os.name == "nt":
+            helper = ROOT / "build/Provision.exe"
+            subprocess.run(["cl", "/nologo", "/O2", "/MT", "/std:c11", str(ROOT / "packaging/provision.c"),
+                            f"/Fe:{helper}", "/link", "/SUBSYSTEM:WINDOWS", "shell32.lib", "advapi32.lib",
+                            "user32.lib"], cwd=helper.parent, check=True)
+            subprocess.run([compiler, f"/DHELPER={helper}", f"/DOUTPUT={dist / 'VoucherReorder-Provisioning.exe'}",
+                            str(ROOT / "packaging/provision.nsi")], check=True)
         installer = dist / f"VoucherReorder-{version}-Setup.exe"
         subprocess.run(
             [

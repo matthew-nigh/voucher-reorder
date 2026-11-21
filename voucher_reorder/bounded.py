@@ -99,6 +99,11 @@ def main(operation, path, config):
     from .windows import convert, forward
 
     settings = Settings(**json.loads(config))
+    if operation == "receive":
+        from .spool import receive_one
+
+        receive_one(path, settings)
+        return 0
     if operation == "inspect":
         reader = PdfReader(path, strict=True)
         return 2 if reader.is_encrypted or not 0 < len(reader.pages) <= MAX_PAGES else 0

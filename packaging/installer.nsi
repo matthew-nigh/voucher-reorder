@@ -54,10 +54,6 @@ Section "Install or upgrade"
     Abort "Update was not activated. The previous installation and settings were retained."
   ${EndIf}
   WriteUninstaller "$INSTDIR\Uninstall.exe"
-  ; Request admin ONLY for the optional printer. Cancellation leaves a working PDF app.
-  IfSilent skipVirtual
-  ExecWait '"$Candidate\runtime\pythonw.exe" "$Candidate\packaging\mode_setup.py" auto' $0
-  skipVirtual:
 SectionEnd
 Function un.onInit
   SetShellVarContext current

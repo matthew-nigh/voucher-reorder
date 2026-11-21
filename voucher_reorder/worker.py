@@ -7,7 +7,6 @@ from .config import Settings, atomic_json, data_dir, load
 from .bounded import execute
 from .inbox import Inbox
 from .locking import FileLock
-from .lpr import Server
 from .queue import Queue
 from .windows import convert, forward, message
 
@@ -71,7 +70,6 @@ def serve():
 def _serve(root):
     queue = Queue(root / "jobs", recover=True)
     inbox = Inbox(root)
-    server = None
     stop = root / "stop"
     stop.unlink(missing_ok=True)
     try:
@@ -79,20 +77,13 @@ def _serve(root):
             warning = None
             try:
                 settings = load(root / "settings.json")
-                if settings.mode == "virtual" and server is None:
+                virtual_ready = False
+                if settings.mode == "virtual" and settings.printer:
                     try:
-                        server = Server(
-                            ("127.0.0.1", 515),
-                            root / "jobs",
-                            lambda p: accept_virtual(queue, p, root),
-                        )
-                        threading.Thread(target=server.serve_forever, daemon=True).start()
-                    except OSError:
-                        warning = "Virtual printer is unavailable: local port 515 is in use. Switch to PDF mode or resolve the conflict."
-                if settings.mode == "pdf" and server is not None:
-                    server.shutdown()
-                    server.server_close()
-                    server = None
+                        execute("receive", root, settings)
+                        virtual_ready = True
+                    except (OSError, ValueError):
+                        warning = "Virtual job retained or printer unavailable. Check the Windows queue and provisioning."
                 if settings.printer and settings.watch_inbox:
                     warning = inbox.scan(queue, settings) or warning
                 alert = process_one(queue, settings)
@@ -105,7 +96,7 @@ def _serve(root):
                     {
                         "heartbeat": time.time(),
                         "mode": settings.mode,
-                        "virtual_ready": server is not None,
+                        "virtual_ready": virtual_ready,
                         "error": warning,
                     },
                 )
@@ -116,8 +107,5 @@ def _serve(root):
                 )
             time.sleep(1)
     finally:
-        if server:
-            server.shutdown()
-            server.server_close()
         (root / "worker.json").unlink(missing_ok=True)
         stop.unlink(missing_ok=True)
