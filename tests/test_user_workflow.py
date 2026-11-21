@@ -332,3 +332,56 @@ def test_pdf_export_rejects_images_and_blank_pages(tmp_path):
     process_one(queue, settings)
     assert queue.read(queue.jobs()[0])["state"] == "failed"
     assert not (tmp_path / "output").exists()
+
+
+def test_pdf_preflight_handles_indirect_resources_and_soft_mask_images(tmp_path):
+    from pypdf import PdfReader, PdfWriter
+    from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject, NumberObject
+
+    from voucher_reorder.printing import validate_vector_pdf
+
+    writer = PdfWriter()
+    page = writer.add_page(PdfReader(sample()).pages[0])
+    resources = page["/Resources"]
+    # Real producers can make the resources dictionaries indirect objects.
+    resources[NameObject("/Font")] = writer._add_object(resources["/Font"])
+    page[NameObject("/Resources")] = writer._add_object(resources)
+    path = tmp_path / "vector.pdf"
+    writer.write(path)
+    validate_vector_pdf(path)
+    bitmap = DecodedStreamObject()
+    bitmap.set_data(b"\x00")
+    bitmap.update({NameObject("/Subtype"): NameObject("/Image"), NameObject("/Width"): NumberObject(1)})
+    group = DecodedStreamObject()
+    group.set_data(b"/Im Do")
+    group[NameObject("/Resources")] = DictionaryObject(
+        {
+            NameObject("/XObject"): writer._add_object(
+                DictionaryObject({NameObject("/Im"): writer._add_object(bitmap)})
+            )
+        }
+    )
+    resources[NameObject("/ExtGState")] = DictionaryObject(
+        {
+            NameObject("/GS"): DictionaryObject(
+                {NameObject("/SMask"): DictionaryObject({NameObject("/G"): writer._add_object(group)})}
+            )
+        }
+    )
+    writer.write(path)
+    with pytest.raises(ValueError, match="image content"):
+        validate_vector_pdf(path)
+
+
+def test_pdf_export_folder_alias_cannot_point_into_inbox(tmp_path, monkeypatch):
+    import os
+
+    if os.name == "nt":
+        pytest.skip("Creating directory symlinks requires Windows developer mode or elevation")
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    inbox = tmp_path / "VoucherReorder" / "Inbox"
+    inbox.mkdir(parents=True)
+    alias = tmp_path / "output-alias"
+    alias.symlink_to(inbox, target_is_directory=True)
+    with pytest.raises(ValueError, match="outside the Inbox"):
+        Settings(output_mode="pdf", output_folder=str(alias))

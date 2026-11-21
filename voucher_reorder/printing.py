@@ -57,33 +57,45 @@ def validate_vector_pdf(path):
     reader = PdfReader(path, strict=True)
     paint = {b"Tj", b"TJ", b"'", b'"', b"S", b"s", b"f", b"F", b"f*", b"B", b"B*", b"b", b"b*", b"sh"}
 
+    def resolve(obj):
+        return obj.get_object() if hasattr(obj, "get_object") else obj
+
     def inspect(stream, resources, ancestors):
         if len(ancestors) > 40 or id(stream) in ancestors:
             raise ValueError("Recursive PDF resources are unsupported.")
         ancestors = ancestors | {id(stream)}
+        resources = resolve(resources)
         painted = False
+        invoked = set()
         if stream is not None:
             content = ContentStream(stream, reader)
             for operands, operator in content.operations:
                 if operator == b"INLINE IMAGE":
                     raise ValueError("Use a vector PDF; image content is unsupported.")
                 painted |= operator in paint
-        for obj in resources.get("/XObject", {}).values():
-            obj = obj.get_object()
+                if operator == b"Do":
+                    invoked.add(operands[0])
+        for name, obj in resolve(resources.get("/XObject", {})).items():
+            obj = resolve(obj)
             if obj.get("/Subtype") == "/Image":
                 raise ValueError("Use a vector PDF; image content is unsupported.")
             if obj.get("/Subtype") == "/Form":
                 child_paint = inspect(obj, obj.get("/Resources", resources), ancestors)
                 # Only invoked Forms count toward the page's vector content.
-                if stream is not None and any(op == b"Do" for _, op in content.operations):
+                if name in invoked:
                     painted |= child_paint
-        for pattern in resources.get("/Pattern", {}).values():
+        for pattern in resolve(resources.get("/Pattern", {})).values():
             pattern = pattern.get_object()
             if pattern.get("/PatternType") == 1:
                 inspect(pattern, pattern.get("/Resources", {}), ancestors)
-        for font in resources.get("/Font", {}).values():
+        for state in resolve(resources.get("/ExtGState", {})).values():
+            mask = resolve(resolve(state).get("/SMask"))
+            if isinstance(mask, dict) and "/G" in mask:
+                group = resolve(mask["/G"])
+                inspect(group, group.get("/Resources", resources), ancestors)
+        for font in resolve(resources.get("/Font", {})).values():
             font = font.get_object()
-            for glyph in font.get("/CharProcs", {}).values():
+            for glyph in resolve(font.get("/CharProcs", {})).values():
                 inspect(glyph.get_object(), font.get("/Resources", {}), ancestors)
         return painted
 
