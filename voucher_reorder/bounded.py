@@ -37,6 +37,7 @@ ERRORS = {
     6: "Windows printer configuration failed (code 6). See print-error.log in the data folder.",
     7: "Windows page rendering or spooling failed (code 7). See print-error.log in the data folder.",
     8: "Windows printing exceeded its deadline (code 8). Check the printer before retrying.",
+    10: "This PDF was already reordered. Use the original source PDF.",
     9: "Windows print worker terminated unexpectedly (code 9). See print-error.log before retrying.",
 }
 
@@ -206,7 +207,7 @@ def main(operation, path, config):
     from pypdf import PdfReader
 
     from .engine import reorder
-    from .printing import validate_pages
+    from .printing import validate_pages, validate_vector_pdf
     from .windows import convert, forward
 
     settings = Settings(**json.loads(config))
@@ -217,12 +218,16 @@ def main(operation, path, config):
         return 0
     if operation == "inspect":
         reader = PdfReader(path, strict=True)
+        if not reader.is_encrypted and (reader.metadata or {}).get("/VoucherReorderOutput") == "1":
+            return 10
         return 2 if reader.is_encrypted or not 0 < len(reader.pages) <= MAX_PAGES else 0
     if operation == "prepare":
         if (path / "input.ps").exists() and not (path / "input.pdf").exists():
             convert(path / "input.ps", path / "input.pdf")
         if (path / "input.pdf").stat().st_size > MAX_OUTPUT:
             return 5
+        if settings.output_mode == "pdf":
+            validate_vector_pdf(path / "input.pdf")
         reorder(path / "input.pdf", path / "output.pdf", settings)
         if (path / "output.pdf").stat().st_size > MAX_OUTPUT:
             return 5

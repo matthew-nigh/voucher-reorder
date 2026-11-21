@@ -219,3 +219,104 @@ def test_v020_settings_and_held_job_migrate(tmp_path):
     process_one(queue, settings, sender=lambda p, s, a: calls.append(s))
     assert queue.read(job)["state"] == "sent"
     assert calls[0].source_order == (0, 1, 2)
+
+
+@pytest.mark.parametrize("printer", ["", "Microsoft Print to PDF", "Microsoft XPS Document Writer"])
+def test_pdf_output_without_physical_printer(tmp_path, printer):
+    from pypdf import PdfReader
+
+    folder = tmp_path / "saved output"
+    settings = Settings(printer=printer, output_mode="pdf", output_folder=str(folder), source_order=(2, 0, 1))
+    queue = Queue(tmp_path / "jobs")
+    for pages in (1, 10, 10):
+        # Unique synthetic jobs, including consecutive 10-page batches.
+        from voucher_reorder.alignment import create
+
+        source = tmp_path / "FAKE.pdf"
+        create(source, settings)
+        from pypdf import PdfWriter
+
+        writer = PdfWriter()
+        for _ in range(pages):
+            writer.add_page(PdfReader(source).pages[0])
+        writer.add_metadata({"/Title": str(len(queue.jobs()))})
+        writer.write(source)
+        queue.accept_bytes(source.read_bytes(), settings)
+        process_one(queue, settings, sender=lambda *args: pytest.fail("called Windows printer"))
+        job = queue.jobs()[-1]
+        state = queue.read(job)
+        assert state["state"] == "sent", state
+        assert "Saved reordered PDF:" in state["message"]
+        output = Path(state["message"].removeprefix("Saved reordered PDF: "))
+        assert output.parent == folder
+        assert len(PdfReader(output).pages) == pages
+        assert b"Tj" in PdfReader(output).pages[0]["/Resources"]["/XObject"]["/Sheet"].get_data()
+        assert not (job.parent / "output.pdf").exists()
+    assert len(list(folder.glob("*.pdf"))) == 3
+    assert not list(folder.glob("*.tmp"))
+
+
+def test_export_cannot_feed_inbox_even_after_copy_and_restart(tmp_path):
+    from voucher_reorder.engine import reorder
+
+    inbox = Inbox(tmp_path)
+    output = inbox.folder / "copied-back.pdf"
+    reorder(sample(), output, Settings())
+    queue = Queue(tmp_path / "jobs")
+    settings = Settings(output_mode="pdf", output_folder=str(tmp_path / "output"))
+    for watcher in (inbox, Inbox(tmp_path)):
+        watcher.scan(queue, settings, now=0)
+        watcher.scan(queue, settings, now=4)
+        assert not queue.jobs()
+    with pytest.raises(ValueError, match="already reordered"):
+        read_pdf(output)
+
+
+@pytest.mark.parametrize("child", ["", "nested"])
+def test_export_folder_cannot_be_in_inbox(tmp_path, monkeypatch, child):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    with pytest.raises(ValueError, match="outside the Inbox"):
+        Settings(output_mode="pdf", output_folder=str(tmp_path / "VoucherReorder" / "Inbox" / child))
+
+
+def test_export_checks_queue_inbox_and_folder_failure(tmp_path):
+    settings = Settings(output_mode="pdf", output_folder=str(tmp_path / "Inbox"))
+    queue = Queue(tmp_path / "jobs")
+    queue.accept_bytes(sample().getvalue(), settings)
+    process_one(queue, settings)
+    assert queue.read(queue.jobs()[0])["state"] == "review"
+    assert not list((tmp_path / "Inbox").glob("*.pdf"))
+
+
+@pytest.mark.parametrize("printer", ["Voucher Reorder", "voucher reorder", " Voucher Reorder "])
+def test_self_output_always_rejected(tmp_path, printer):
+    with pytest.raises(ValueError, match="loop"):
+        Settings(printer=printer, output_mode="pdf", output_folder=str(tmp_path))
+
+
+def test_pdf_export_rejects_images_and_blank_pages(tmp_path):
+    import io
+
+    from PIL import Image
+    from pypdf import PdfWriter
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfgen import canvas
+
+    from voucher_reorder.printing import validate_vector_pdf
+
+    blank = tmp_path / "blank.pdf"
+    writer = PdfWriter()
+    writer.add_blank_page(612, 792)
+    writer.write(blank)
+    with pytest.raises(ValueError, match="blank"):
+        validate_vector_pdf(blank)
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=(612, 792))
+    c.drawImage(ImageReader(Image.new("RGB", (1, 1))), 50, 50, 100, 100)
+    c.save()
+    queue = Queue(tmp_path / "jobs")
+    settings = Settings(output_mode="pdf", output_folder=str(tmp_path / "output"))
+    queue.accept_bytes(buf.getvalue(), settings)
+    process_one(queue, settings)
+    assert queue.read(queue.jobs()[0])["state"] == "failed"
+    assert not (tmp_path / "output").exists()

@@ -57,15 +57,15 @@ def main():
     elif args.command == "validate":
         settings = load(config)
         settings.edges(settings.paper_height * 72)
-        if not settings.printer:
-            raise ValueError("Choose a physical printer.")
+        if not settings.output_ready:
+            raise ValueError("Choose an output printer or a folder for reordered PDFs.")
     elif args.command in ("alignment", "submit"):
         from .inbox import read_pdf
         from .queue import Queue
 
         settings = load(config)
-        if not settings.printer:
-            raise ValueError("Choose a physical printer first.")
+        if not settings.output_ready:
+            raise ValueError("Choose an output printer or PDF folder first.")
         with tempfile.TemporaryDirectory(dir=root) as folder:
             source = Path(folder) / "sample.pdf"
             if args.command == "alignment":
@@ -78,7 +78,7 @@ def main():
             if not accepted:
                 print("This exact PDF was already received in the last 24 hours; it was not printed again.")
             else:
-                print("Job queued. Inspect Job status and the real printer queue.")
+                print("Job queued. Inspect Job status for the saved PDF or printer submission.")
         from .windows import register_user
 
         register_user()

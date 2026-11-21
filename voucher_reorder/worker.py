@@ -7,12 +7,13 @@ from .bounded import ERRORS, execute
 from .config import atomic_json, data_dir, from_dict, load
 from .inbox import Inbox
 from .locking import FileLock
+from .printing import save_pdf
 from .queue import Queue
 from .windows import convert, forward, message
 
 
 def process_one(queue, settings, converter=convert, sender=forward):
-    if not settings.printer or (queue.root.parent / "maintenance.json").exists():
+    if not settings.output_ready or (queue.root.parent / "maintenance.json").exists():
         return
     with queue.lock, queue.transaction():
         for job in queue.jobs():
@@ -31,6 +32,10 @@ def process_one(queue, settings, converter=convert, sender=forward):
                     converter(job.parent / "input.ps", job.parent / "input.pdf")
                 execute("prepare", job.parent, config)
                 queue.update(job, "printing")
+                if config.output_mode == "pdf":
+                    destination = save_pdf(job.parent / "output.pdf", config, queue.root.parent)
+                    queue.update(job, "sent", f"Saved reordered PDF: {destination}")
+                    return
                 if sender is forward:
                     execute("print", job.parent / "output.pdf", config)
                 else:
@@ -59,6 +64,8 @@ def process_one(queue, settings, converter=convert, sender=forward):
                     )
                     else "Inspect the real printer queue and paper before reprinting."
                 )
+                if config.output_mode == "pdf" and attempted:
+                    detail = "Could not confirm PDF save. Check the output folder and its permissions before retrying."
                 queue.update(job, "review" if attempted else "failed", detail)
                 return "A job needs attention. Open Voucher Reorder Job status before reprinting."
             return
@@ -87,13 +94,13 @@ def _serve(root):
             try:
                 settings = load(root / "settings.json")
                 virtual_ready = False
-                if settings.mode == "virtual" and settings.printer:
+                if settings.mode == "virtual" and settings.output_ready:
                     try:
                         execute("receive", root, settings)
                         virtual_ready = True
                     except (OSError, ValueError):
                         warning = "Virtual job retained or printer unavailable. Check the Windows queue and provisioning."
-                if settings.printer and settings.watch_inbox:
+                if settings.output_ready and settings.watch_inbox:
                     try:
                         warning = inbox.scan(queue, settings) or warning
                     except (ValueError, OSError):

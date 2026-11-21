@@ -91,6 +91,8 @@ def reorder(source, destination: str | Path, settings: Settings) -> None:
             NameObject("/PickTrayByPDFSize"): BooleanObject(True),
         }
     )
-    writer.add_metadata({"/Producer": "Voucher Reorder", "/Title": "Voucher print job"})
+    writer.add_metadata(
+        {"/Producer": "Voucher Reorder", "/Title": "Voucher print job", "/VoucherReorderOutput": "1"}
+    )
     with LimitedOutput(open(destination, "wb", buffering=0)) as output:
         writer.write(output)

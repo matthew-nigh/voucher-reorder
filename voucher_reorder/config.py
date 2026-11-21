@@ -11,6 +11,8 @@ from pathlib import Path
 @dataclass(frozen=True)
 class Settings:
     printer: str = ""
+    output_mode: str = "printer"
+    output_folder: str = ""
     mode: str = "pdf"
     watch_inbox: bool = True
     paper_kind: int = 1
@@ -24,6 +26,12 @@ class Settings:
     offsets: tuple[tuple[float, float], ...] = ((0, 0), (0, 0), (0, 0))
 
     def __post_init__(self):
+        if self.output_mode not in ("printer", "pdf"):
+            raise ValueError("Choose printer or PDF file output.")
+        if not isinstance(self.output_folder, str) or any(c in self.output_folder for c in "\r\n\0"):
+            raise ValueError("Invalid PDF output folder.")
+        if self.output_mode == "pdf":
+            self.pdf_folder()
         if self.mode not in ("pdf", "virtual") or type(self.watch_inbox) is not bool:
             raise ValueError("Invalid operating mode.")
         if type(self.paper_kind) is not int or not 1 <= self.paper_kind <= 65535:
@@ -38,8 +46,8 @@ class Settings:
                 raise ValueError("Choose each of Check, Stub 1, and Stub 2 once in each order.")
         if not isinstance(self.printer, str) or any(c in self.printer for c in "\r\n\0"):
             raise ValueError("Invalid printer name.")
-        if self.printer.casefold() == "voucher reorder":
-            raise ValueError("Select your physical printer, not Voucher Reorder.")
+        if self.printer.strip().casefold() == "voucher reorder":
+            raise ValueError("Voucher Reorder cannot be the output printer (printing loop).")
         if self.boundaries is not None:
             if len(self.boundaries) != 2 or not all(math.isfinite(x) for x in self.boundaries):
                 raise ValueError("Enter two finite band boundaries in inches.")
@@ -49,6 +57,20 @@ class Settings:
             raise ValueError("Enter x and y nudges for all three source sections.")
         if any(not math.isfinite(n) or abs(n) > 1 for pair in self.offsets for n in pair):
             raise ValueError("Each nudge must be between -1 and +1 inch.")
+
+    @property
+    def output_ready(self) -> bool:
+        return self.output_mode == "pdf" or bool(self.printer)
+
+    def pdf_folder(self, root=None) -> Path:
+        folder = Path(self.output_folder)
+        if not self.output_folder or not folder.is_absolute():
+            raise ValueError("Choose an absolute folder for reordered PDFs.")
+        folder = folder.resolve()
+        inbox = ((root or data_dir()) / "Inbox").resolve()
+        if folder == inbox or inbox in folder.parents:
+            raise ValueError("Save reordered PDFs outside the Inbox and its subfolders.")
+        return folder
 
     def edges(self, height: float) -> tuple[float, float, float, float]:
         a, b = self.boundaries or (height / 216, height / 108)
