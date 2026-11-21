@@ -3,6 +3,7 @@ Unicode True
 !include "MUI2.nsh"
 !include "x64.nsh"
 !include "FileFunc.nsh"
+!include "Sections.nsh"
 !ifndef STAGE
   !error "Pass DSTAGE"
 !endif
@@ -16,6 +17,7 @@ RequestExecutionLevel user
 SetCompressor /SOLID lzma
 Var Candidate
 Var Active
+!insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_FINISHPAGE_RUN
 !define MUI_FINISHPAGE_RUN_TEXT "Open Voucher Reorder"
@@ -39,6 +41,7 @@ Function .onInit
     MessageBox MB_ICONSTOP "Voucher Reorder requires Windows 10 or 11 x64. ARM64 is not yet qualified."
     Abort
   ${EndIf}
+  Call SelectVirtual
   SetShellVarContext current
   StrCpy $INSTDIR "$LOCALAPPDATA\Programs\Voucher Reorder"
 FunctionEnd
@@ -47,6 +50,7 @@ Function OpenSettings
   Exec '"$INSTDIR\$Active\runtime\pythonw.exe" "$INSTDIR\$Active\app.py" settings'
 FunctionEnd
 Section "Install or upgrade"
+  SectionIn RO
   CreateDirectory "$INSTDIR\deployments"
   GetTempFileName $Candidate "$INSTDIR\deployments"
   Delete "$Candidate"
@@ -69,6 +73,22 @@ Section "Install or upgrade"
     Abort "Update was not activated. The previous installation and settings were retained."
   ${EndIf}
 SectionEnd
+Section /o "Virtual printer (one administrator prompt)" VirtualPrinter
+  nsExec::ExecToStack '"$Candidate\runtime\python.exe" "$Candidate\packaging\mode_setup.py" setup'
+  Pop $0
+  Pop $1
+  DetailPrint "$1"
+  IfSilent +2
+  MessageBox MB_ICONINFORMATION "$1"
+SectionEnd
+Function SelectVirtual
+  ${GetParameters} $0
+  ClearErrors
+  ${GetOptions} $0 "/VIRTUAL=" $1
+  ${If} $1 == "1"
+    !insertmacro SelectSection ${VirtualPrinter}
+  ${EndIf}
+FunctionEnd
 Function un.onInit
   !insertmacro LockInstallation
   SetShellVarContext current

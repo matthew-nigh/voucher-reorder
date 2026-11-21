@@ -88,43 +88,64 @@ queue first. Settings, Inbox originals and held jobs remain for safe reinstall;
 remove `%LOCALAPPDATA%\VoucherReorder` yourself only after reconciling both printer
 queues and any paper already printed. Shared Microsoft runtimes/drivers remain.
 
-**Earlier 0.1 administrator-only prototype:** its Program Files installation and
-machine printer cannot be deleted by a no-admin installer. Existing profile settings
-are reused, but do not run the old and new apps together. An administrator must
-remove that old machine installation. Back up the profile folder first: the old
-0.1 uninstaller deletes it. Restore that backup before launching the new app and
-reconcile/hold old pending jobs. Public per-user releases starting with 0.2 support
-in-place upgrades in either mode; this pre-public migration needs supervised cleanup.
-
 ## Architecture and safety
 
 ```text
 PDF mode:     existing PDF output -> dedicated Inbox / Print a PDF
 Virtual mode: QuickBooks -> inbox Microsoft PostScript driver -> owner-restricted Windows spool queue -> Ghostscript PDF
-Both:         private per-user queue -> vector pypdf reorder -> Windows PDF renderer -> checked GDI pages -> real printer
+Both:         private per-user queue -> vector pypdf reorder -> PDFium vector EMF -> checked GDI pages -> real printer
 ```
 
 Python's official embeddable runtime and pure-Python pypdf make the core testable
-on Linux. The native UI uses Windows PowerShell/WinForms. The per-user installer starts in PDF mode. For virtual mode, an administrator must
-obtain the matching `VoucherReorder-Provisioning.exe` independently, verify it
-against the trusted release, and install it from administrator-controlled storage.
-Then select **Enable virtual printer**. The protected helper configures one
-unshared Windows printer using the Microsoft MS Publisher Imagesetter driver,
-the local NUL: port, and retained RAW jobs. The signed-in owner consumes those
-jobs through Windows spooler RPC. When the worker is offline, jobs stay in the
-restricted Windows queue. If a job enters spool review, reconcile paper and both
-queues, cancel the retained job, and submit a fresh export if still needed.
+on Linux. The native UI uses Windows PowerShell/WinForms. The per-user installer
+starts in PDF mode with no administrator access. Select **Virtual printer (one
+administrator prompt)** in setup, or **Enable virtual printer** in Settings, to
+install the embedded, matching provisioning package and configure the queue in
+one UAC elevation. No separate download is needed. Silent setup defaults to PDF;
+`/S /VIRTUAL=1` explicitly enables the optional component. Declining UAC leaves PDF
+mode usable. The elevated package runs only its native launcher and scripts in
+protected Program Files; the per-user app stays unelevated. Use trusted installers
+and verify the published checksums: these builds are unsigned.
 
-**Upgrading from LPR:** stop submitting checks and reconcile outstanding jobs
-before changing the old queue. Use the protected provisioning helper to migrate
-the owner's empty queue, or have an administrator remove that legacy printer
-before upgrading the per-user app. Keep the old receiver running until the old
-queue has been migrated or removed.
+The protected helper configures one unshared Windows printer using Microsoft
+MS Publisher Imagesetter, the local NUL: port, and retained RAW jobs. The signed-in
+owner consumes jobs through spooler RPC. Offline jobs stay in that restricted queue.
+Reconcile paper and both queues before resubmitting any job in review. The package
+has its own **Voucher Reorder Printer Provisioning** entry in Windows Apps; uninstall
+it as administrator after reconciling/canceling queued jobs. Shared runtimes and OS
+drivers remain installed. Per-user updates/uninstall never block on a legacy LPR
+queue; no port-515 migration is supplied because that queue was never deployed.
 
-Processing allows 250 pages, 120 seconds per processing phase, 768 MiB of worker
-memory, and 256 MiB of expanded page content. Flatten optional-content layers in
-the source application before exporting. The final print uses lossless 600 dpi
-rasters. Recheck physical alignment and MICR on plain paper after upgrading.
+Provisioning metadata, executable hash and app version are checked before elevation.
+An app upgrade with an older provisioning package falls back to PDF mode and explains
+how to enable the updated optional component. App installation itself needs no UAC.
+
+The expected workload is ten pages or fewer per job, including consecutive jobs.
+Printing has a 384 MiB combined process-tree cap; PDF preparation retains its
+768 MiB cap, 250-page validation ceiling, and 256 MiB expanded-content limit.
+Inspection/conversion have 120-second deadlines;
+printing gets 60 seconds for startup plus 30 seconds per page (six minutes for ten
+pages), with a separate 30-second printer-probe allowance.
+The pinned, hash-verified PDFium DLL uses its vector EMF/GDI print mode. Text and
+paths remain vectors at the Windows driver boundary, at actual size with no fit,
+shrink or auto-rotation. Windows drivers control their own final device encoding;
+arbitrary drivers do not accept raw PDF bytes. There is no application raster path.
+All pages are preflighted before starting the job, with a 64 MiB per-page EMF limit.
+Bitmap drawing/fallback (including scanned/image PDFs) and blank vector pages are
+rejected rather than silently rasterized; use a vector PDF export. Flatten optional
+content in the source application without converting text to images. Recheck physical
+alignment and MICR with the intended printer/stock after upgrading.
+
+CI prints six consecutive ten-page jobs to Microsoft's PDF file port, checks every page
+for nonblank vector output, absence of image XObjects and sequential vector page IDs.
+It drains six queued jobs through the same worker, checking payload cleanup,
+zero waiting/spool backlog, and flat worker memory. It requires the print tree's
+measured peak commit to stay below 256 MiB per job, with less than 32 MiB variation
+across six jobs, and worker private memory variation below 16 MiB after garbage
+collection. Compiler scratch files live in private per-job directories, are removed
+on exit, and are retried by terminal-job recovery if locked. Printer failures use distinct codes
+(configuration 6, vector/spool 7, timeout 8, unexpected termination 9) and an 8 KiB sanitized local
+`%LOCALAPPDATA%\VoucherReorder\print-error.log`; no document output is retained.
 
 PDF Inbox ingestion waits for stable size/time, a complete parseable PDF and an
 exclusive Windows read handle. Source PDFs are **not deleted or moved**. Persistent
@@ -162,7 +183,7 @@ programs. `--stage-only` prepares files; `--version 0.2.1` overrides the packagi
 version for upgrade tests (no tag/release is created). Installations need no network
 in PDF mode. Virtual setup may download Microsoft's signature-checked C++ runtime.
 
-[CI](.github/workflows/build.yml) runs Linux tests; builds on `windows-latest`;
+[CI](.github/workflows/build.yml) runs Linux tests; builds on `windows-2022`;
 checks PowerShell/UI construction, the packaged runtime and optional-printer logic;
 and installs, upgrades, refuses a downgrade, repairs and uninstalls in an actual
 standard-user Windows account. Artifacts include matching sources. Future `v*` tag
@@ -179,5 +200,5 @@ the matching source archive alongside the installer.
 
 Sources: [Microsoft driver installation permissions](https://learn.microsoft.com/en-us/windows-hardware/drivers/print/point-and-print-with-packages),
 [Windows spool job reads](https://learn.microsoft.com/en-us/windows/win32/printdocs/readprinter),
-[Windows PDF renderer](https://learn.microsoft.com/uwp/api/windows.data.pdf),
+[PDFium printing API](https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8149/public/fpdfview.h),
 [Ghostscript vector output](https://ghostscript.readthedocs.io/en/latest/VectorDevices.html).

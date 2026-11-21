@@ -46,7 +46,9 @@ Exercise memory/time limits and check that the next ordinary job completes.
 
 ## Optional virtual path (must pass before promoting it)
 
-9. [ ] Install the verified provisioning package from an admin-controlled directory. Click Enable virtual printer; approve UAC. Also test a standard desktop user with
+9. [ ] Select the optional Virtual printer component in the main installer. Confirm
+       exactly one UAC prompt installs the embedded package AND configures the queue.
+       Repeat via Enable virtual printer in Settings. Also test a standard desktop user with
        different administrator credentials. Queue access must go to the original user.
        The app remains in LocalAppData and its worker remains unelevated.
 10. [ ] Verify queue **Voucher Reorder**, Microsoft **MS Publisher Imagesetter** driver,
@@ -58,7 +60,7 @@ Exercise memory/time limits and check that the next ordinary job completes.
 11. [ ] Print a fake QuickBooks voucher to Voucher Reorder, portrait/matching paper/one
         copy. No PDF Save/script/viewer UI should appear. Verify physical placement.
 12. [ ] On separate snapshots, test UAC decline, unavailable credentials, missing inbox
-        driver, printer policy, legacy queue migration and missing C++ runtime/offline setup.
+        driver, printer policy, mismatched provisioning version/hash and missing C++ runtime/offline setup.
         Failure must leave a working PDF mode without modifying unrelated queues.
 13. [ ] Switch back to PDF mode; approve removal, then repeat with removal declined.
         On decline, PDF mode still works and the remaining virtual queue is documented
@@ -84,8 +86,9 @@ Exercise memory/time limits and check that the next ordinary job completes.
 ## Upgrade matrix — run separately for PDF and Virtual mode
 
 19. [ ] Install version A; set a nondefault printer/order/paper/tray/nudges. Upgrade to B
-        without uninstalling. All settings and active mode survive; no new UAC is needed
-        for the per-user app update. Reopening/Run entry targets only B's deployment.
+        without uninstalling. Printer/layout settings survive; no UAC is needed
+        for the per-user app update. If provisioning versions differ, expect PDF mode
+        and a clear message; selecting the optional component updates it with one UAC. Reopening/Run entry targets only B's deployment.
 20. [ ] Upgrade with Settings open: it closes gracefully. Upgrade with waiting jobs:
         jobs become held, with original printer/layout snapshots and payloads intact.
         After checking stock, Resume held jobs prints each unattempted job once.
@@ -98,9 +101,8 @@ Exercise memory/time limits and check that the next ordinary job completes.
         Rerunning setup must recover. Test disk-full and files locked by security
         software: old usable version/settings are preserved where rollback is possible;
         never delete an unknown folder. Retained old payloads must be cleaned later.
-24. [ ] If migrating the old administrator-only 0.1 prototype, back up the profile folder
-        and supervise admin cleanup first. Its uninstaller deletes profile data. Restore
-        settings, reconcile old jobs, and ensure the old worker does not remain running.
+24. [ ] Confirm unrelated or obsolete printer queues do not block the per-user app's
+        update/uninstall. No port-515 migration is required or provided.
 
 ## Uninstall, reinstall and report
 
@@ -117,3 +119,16 @@ Send checkbox results, versions/models, redacted dialog text, fake-page ruler
 measurements/photos and queue observations. **Never send real check PDFs, bank or
 routing/account numbers, payee names, spool files, settings JSON or unredacted
 screenshots to this public repository.**
+
+## Automated Windows regression coverage
+
+CI requires the PDF file-port driver (absence fails), prints six consecutive ten-page vector
+jobs, checks page count, Letter dimensions, visible vector content, sequential page
+markers and no image XObjects. It measures Windows Job peaks below 256 MiB per job
+with less than 32 MiB variation, worker private memory variation below 16 MiB after
+garbage collection, payload/compiler-temp cleanup and empty waiting/spool queues. Vector preflight rejects raster
+fallback and blank pages before StartDoc; test unsupported real exports separately.
+CI also exercises the real provisioning package install/upgrade/uninstall and version
+mismatch rejection, followed by a real standard-user install/upgrade/repair/uninstall.
+Interactive UAC with alternate credentials and physical MICR remain manual acceptance.
+Inspect only the sanitized `print-error.log` when diagnosing code 6/7/8 failures.

@@ -21,6 +21,7 @@ DOCS = [
     "TESTING_ON_WINDOWS.md",
     "NEXT_STEPS.md",
     "THIRD_PARTY_NOTICES.md",
+    "SECURITY_REVIEW.md",
 ]
 
 
@@ -97,6 +98,16 @@ def main():
         json.dumps({"identity": "org.voucher-reorder.desktop", "version": version})
     )
     vendor = stage / "vendor"
+    pdfium = vendor / "pdfium"
+    with zipfile.ZipFile(files["pdfium-runtime"]) as archive:
+        pdfium.mkdir(parents=True)
+        for name in ("pdfium.dll", "version.json"):
+            (pdfium / name).write_bytes(archive.read("pypdfium2_raw/" + name))
+        for name in archive.namelist():
+            if ".dist-info/licenses/" in name and not name.endswith("/"):
+                target = pdfium / "licenses" / name.split(".dist-info/licenses/", 1)[1]
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(archive.read(name))
     gs = vendor / "ghostscript"
     sevenzip = (
         shutil.which("7z")
@@ -198,10 +209,18 @@ def main():
                 [
                     compiler,
                     f"/DHELPER={helper}",
-                    f"/DOUTPUT={dist / 'VoucherReorder-Provisioning.exe'}",
+                    f"/DVERSION={version}",
+                    f"/DOUTPUT={dist / f'VoucherReorder-{version}-Provisioning.exe'}",
                     str(ROOT / "packaging/provision.nsi"),
                 ],
                 check=True,
+            )
+            provisioning = stage / "provisioning"
+            provisioning.mkdir()
+            package = dist / f"VoucherReorder-{version}-Provisioning.exe"
+            shutil.copy2(package, provisioning / "Setup.exe")
+            (provisioning / "package.json").write_text(
+                json.dumps({"version": version, "sha256": hashlib.sha256(package.read_bytes()).hexdigest()})
             )
         installer = dist / f"VoucherReorder-{version}-Setup.exe"
         subprocess.run(

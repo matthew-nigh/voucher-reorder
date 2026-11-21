@@ -61,20 +61,16 @@ def main():
     parser.add_argument("--candidate", type=Path)
     args = parser.parse_args()
     root, data = args.root, data_dir()
-    # Refuse to stop the old receiver while Windows could still send payloads to LPR.
-    import winreg
-
-    try:
-        with winreg.OpenKey(
-            winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Print\Printers\Voucher Reorder"
-        ) as printer:
-            if winreg.QueryValueEx(printer, "Port")[0] == "VoucherReorder_LPR":
-                print("Remove or migrate the legacy LPR queue before updating or uninstalling.")
-                return 1
-    except FileNotFoundError:
-        pass
     if args.action == "install":
-        install(root, args.candidate, data, lambda path, ver: integrate(root, path, ver))
+        result = install(root, args.candidate, data, lambda path, ver: integrate(root, path, ver))
+        from voucher_reorder.provisioning import check_version
+
+        try:
+            check_version(data, result["version"])
+        except OSError:
+            # Activation has committed: never report a staging failure that makes
+            # NSIS delete the now-active deployment. Settings can retry this check.
+            print("App updated. Check provisioning version in Settings before virtual printing.")
     else:
         import winreg
 

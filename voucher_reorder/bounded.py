@@ -7,21 +7,37 @@ import os
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import asdict
 from pathlib import Path
 
-from .config import Settings
+from .config import Settings, data_dir
+from .diagnostics import ErrorCapture
 
 MAX_PAGES = 250
 MEMORY = 768 * 1024**2
 MAX_OUTPUT = 256 * 1024**2
 TIMEOUT = 120
+PRINT_MEMORY = 384 * 1024**2
+PRINT_STARTUP = 60
+PRINT_PER_PAGE = 30
+PRINT_PROBE_TIMEOUT = 30
+
+
+def peak_memory():
+    return 0
+
+
 ERRORS = {
     2: "PDF must be unencrypted and contain 1 to 250 pages.",
     3: "PDF page size differs from selected printer paper. Select matching paper.",
     4: "Flatten optional-content layers before sending a PDF print job.",
     5: "PDF processing failed or exceeded the document limits.",
+    6: "Windows printer configuration failed (code 6). See print-error.log in the data folder.",
+    7: "Windows page rendering or spooling failed (code 7). See print-error.log in the data folder.",
+    8: "Windows printing exceeded its deadline (code 8). Check the printer before retrying.",
+    9: "Windows print worker terminated unexpectedly (code 9). See print-error.log before retrying.",
 }
 
 
@@ -34,11 +50,18 @@ class LimitedOutput(io.BufferedWriter):
         return super().write(data)
 
 
-def constrain():
+def print_timeout(pages):
+    if type(pages) is not int or not 1 <= pages <= MAX_PAGES:
+        raise ValueError("Invalid print page count.")
+    return PRINT_STARTUP + PRINT_PER_PAGE * pages
+
+
+def constrain(operation="prepare"):
+    limit_memory = PRINT_MEMORY if operation == "print" else MEMORY
     if os.name != "nt":
         import resource
 
-        for limit, size in ((resource.RLIMIT_AS, MEMORY), (resource.RLIMIT_FSIZE, MAX_OUTPUT)):
+        for limit, size in ((resource.RLIMIT_AS, limit_memory), (resource.RLIMIT_FSIZE, MAX_OUTPUT)):
             resource.setrlimit(limit, (size, size))
         return
     from ctypes import wintypes as w
@@ -76,7 +99,7 @@ def constrain():
     job = kernel.CreateJobObjectW(None, None)
     info = Extended()
     info.basic.flags = 0x2000 | 0x200  # KILL_ON_JOB_CLOSE | JOB_MEMORY
-    info.job_memory = MEMORY
+    info.job_memory = limit_memory
     if not (
         job
         and kernel.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info))
@@ -84,9 +107,33 @@ def constrain():
     ):
         raise ctypes.WinError(ctypes.get_last_error())
     # Retain the sole non-inheritable handle until exit, including forced termination.
+    kernel.QueryInformationJobObject.argtypes = [w.HANDLE, ctypes.c_int, w.LPVOID, w.DWORD, w.LPVOID]
+
+    def query_peak():
+        measured = Extended()
+        if not kernel.QueryInformationJobObject(
+            job, 9, ctypes.byref(measured), ctypes.sizeof(measured), None
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return measured.peak_job
+
+    global peak_memory
+    peak_memory = query_peak
 
 
 def execute(operation, path, settings=None):
+    path = Path(path).resolve()
+    if operation == "print":
+        # PowerShell's C# compiler also needs private scratch space. Remove it
+        # after every child exit, including timeout; queue recovery retries locks.
+        with tempfile.TemporaryDirectory(
+            prefix="print-temp-", dir=path.parent, ignore_cleanup_errors=True
+        ) as scratch:
+            return _execute(operation, path, settings, scratch)
+    return _execute(operation, path, settings)
+
+
+def _execute(operation, path, settings=None, scratch=None):
     path = Path(path).resolve()
     args = [
         sys.executable,
@@ -96,35 +143,45 @@ def execute(operation, path, settings=None):
         str(path),
         json.dumps(asdict(settings or Settings())),
     ]
+    budget_file = path.parent / "print-budget.json"
+    if operation == "print":
+        budget_file.unlink(missing_ok=True)
+    environment = os.environ.copy()
+    if scratch:
+        environment.update(TEMP=scratch, TMP=scratch, TMPDIR=scratch)
     child = subprocess.Popen(
         args,
+        env=environment,
         cwd=Path(__file__).resolve().parents[1],
         start_new_session=os.name != "nt",
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
-    deadline = time.monotonic() + TIMEOUT
+    errors = ErrorCapture(child.stderr)
+    started = time.monotonic()
+    deadline = started + (PRINT_STARTUP if operation == "print" else TIMEOUT)
+    budget_loaded = False
     try:
         while child.poll() is None:
             if operation == "receive" and ((path / "stop").exists() or (path / "maintenance.json").exists()):
                 raise ValueError("Spool receipt interrupted.")
             if time.monotonic() >= deadline:
-                raise ValueError(ERRORS[5])
+                raise ValueError(ERRORS[8 if operation == "print" else 5])
             if operation == "prepare" and any(p.stat().st_size > MAX_OUTPUT for p in path.glob("*.pdf")):
                 raise ValueError(ERRORS[5])
-            if operation == "print":
-                bitmap = path.parent / "page.bmp"
+            if operation == "print" and not budget_loaded and budget_file.exists():
                 try:
-                    size = bitmap.stat().st_size
-                except FileNotFoundError:
-                    size = 0
-                if size > MAX_OUTPUT:
-                    raise ValueError(ERRORS[5])
+                    pages = json.loads(budget_file.read_text())["pages"]
+                    if type(pages) is int and 1 <= pages <= MAX_PAGES:
+                        deadline = started + print_timeout(pages) + PRINT_PROBE_TIMEOUT
+                        budget_loaded = True
+                except (OSError, ValueError, KeyError):
+                    pass  # Atomic publication may not yet be visible.
             time.sleep(0.05)
         if child.returncode:
-            raise ValueError(ERRORS.get(child.returncode, ERRORS[5]))
+            raise ValueError(ERRORS.get(child.returncode, ERRORS[9 if operation == "print" else 5]))
     finally:
         if os.name != "nt":
             try:
@@ -134,10 +191,18 @@ def execute(operation, path, settings=None):
         elif child.poll() is None:
             child.kill()
         child.wait()
+        detail = errors.finish()
+        child.stderr.close()
+        if operation == "print" and child.returncode:
+            folder = data_dir()
+            folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+            (folder / "print-error.log").write_text(
+                f"Print child exit code: {child.returncode}\n" + detail, encoding="utf-8"
+            )
 
 
 def main(operation, path, config):
-    constrain()
+    constrain(operation)
     from pypdf import PdfReader
 
     from .engine import reorder
@@ -164,7 +229,11 @@ def main(operation, path, config):
         validate_pages(path / "output.pdf", settings)
         return 0
     if operation == "print":
-        forward(path, settings, path.parents[2] / "sumatra")
+        from .config import atomic_json
+
+        atomic_json(path.parent / "print-budget.json", {"pages": validate_pages(path, settings)})
+        forward(path, settings)
+        atomic_json(path.parent / "print-metrics.json", {"peak_job_bytes": peak_memory()})
         return 0
     return 5
 
@@ -180,6 +249,7 @@ if __name__ == "__main__":
             if str(error).startswith("Flatten optional")
             else 5
         )
-    except Exception:
-        result = 5
+    except Exception as error:
+        result = getattr(error, "print_code", 5)
+        print(f"VRPRINT worker {type(error).__name__} code={result}", file=sys.stderr)
     sys.exit(result)

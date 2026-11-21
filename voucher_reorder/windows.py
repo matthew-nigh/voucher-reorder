@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -64,21 +65,66 @@ def convert(source, output):
                 process.kill()
 
 
-def forward(pdf, settings, appdata):
+class PrintError(RuntimeError):
+    def __init__(self, code):
+        self.print_code = code
+        super().__init__(f"Windows print operation failed (code {code}).")
+
+
+def print_run(args, code, timeout=120, capture=False):
+    from .diagnostics import ErrorCapture
+
+    with subprocess.Popen(
+        list(map(str, args)),
+        stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    ) as child:
+        errors = ErrorCapture(child.stderr)
+        output = bytearray()
+
+        def drain_output():
+            for chunk in iter(lambda: child.stdout.read(4096), b""):
+                # Drain excess without retaining it; malformed printer metadata
+                # must not exhaust memory or bypass the subprocess deadline.
+                if len(output) <= 65536:
+                    output.extend(chunk[: 65537 - len(output)])
+
+        reader = threading.Thread(target=drain_output, daemon=True) if capture else None
+        if reader:
+            reader.start()
+        try:
+            child.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            child.kill()
+            child.wait()
+            raise PrintError(8) from None
+        finally:
+            if reader:
+                reader.join(timeout=2)
+            detail = errors.finish()
+            if detail:
+                print(detail, file=sys.stderr)
+        if child.returncode or len(output) > 65536:
+            raise PrintError(code)
+        return bytes(output) if capture else None
+
+
+def forward(pdf, settings, appdata=None):
+    from .bounded import PRINT_PROBE_TIMEOUT, print_timeout
     from .printing import validate_pages
 
     printer = settings.printer
     pages = validate_pages(pdf, settings)
-    result = subprocess.run(
+    result = print_run(
         powershell("printer_info.ps1", "-Printer", printer, "-PaperKind", settings.paper_kind),
-        capture_output=True,
-        check=True,
-        timeout=30,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        code=6,
+        timeout=PRINT_PROBE_TIMEOUT,
+        capture=True,
     )
     import json
 
-    info = json.loads(result.stdout.decode("utf-8-sig"))
+    info = json.loads(result.decode("utf-8-sig"))
     if info["landscape"]:
         raise ValueError("Set the printer's default orientation to portrait before printing vouchers.")
     if abs(info["width"] - settings.paper_width) > 0.02 or abs(info["height"] - settings.paper_height) > 0.02:
@@ -88,7 +134,7 @@ def forward(pdf, settings, appdata):
 
     if not printer or printer.casefold() == "voucher reorder":
         raise ValueError("Select a physical printer in Voucher Reorder Settings.")
-    run(
+    print_run(
         powershell(
             "print_pages.ps1",
             "-Printer",
@@ -101,7 +147,9 @@ def forward(pdf, settings, appdata):
             pdf,
             "-Pages",
             pages,
-        )
+        ),
+        code=7,
+        timeout=print_timeout(pages),
     )
 
 

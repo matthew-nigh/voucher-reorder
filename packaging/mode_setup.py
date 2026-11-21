@@ -40,9 +40,7 @@ def main(action):
                 "No administrator access is needed for this mode."
             )
             if not remove and result.returncode:
-                detail += (
-                    " Virtual printing requires the matching administrator-installed provisioning package."
-                )
+                detail += " Virtual printer setup was declined or failed; rerun setup and select the virtual printer option."
             if remove and result.returncode:
                 detail += (
                     " The optional Windows printer was not removed; an administrator can remove it later."
@@ -50,19 +48,26 @@ def main(action):
         if remove and result.returncode == 0:
             installed_marker.unlink(missing_ok=True)
         initialized.touch()
-        if action != "remove":
+        if action not in ("remove", "setup"):
             register_user()
-        message(detail)
+        (root / "mode-status.txt").write_text(detail, encoding="utf-8")
+        if action == "setup":
+            print(detail)
+        else:
+            message(detail)
         return 0
     except Exception:
         # No elevation/setup failure may make the no-admin application unusable.
         save(config, replace(settings, mode="pdf"))
         initialized.touch()
-        if action != "remove":
+        if action not in ("remove", "setup"):
             register_user()
-        message(
-            "Virtual printer setup was unavailable. PDF handoff mode is ready; open Voucher Reorder from Start."
-        )
+        detail = "Virtual printer setup was unavailable. PDF handoff mode is ready; open Voucher Reorder from Start."
+        (root / "mode-status.txt").write_text(detail, encoding="utf-8")
+        if action == "setup":
+            print(detail)
+        else:
+            message(detail)
         return 0
 
 
