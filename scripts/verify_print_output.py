@@ -1,8 +1,10 @@
 """Validate the file-port result: every page has marks and no rasterized content."""
 
 import sys
+import time
 
 from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 
 
 def check_resources(resources):
@@ -27,4 +29,12 @@ def verify(path, count):
 
 
 if __name__ == "__main__":
-    verify(sys.argv[1], int(sys.argv[2]))
+    deadline = time.monotonic() + (60 if "--wait" in sys.argv else 0)
+    while True:
+        try:
+            verify(sys.argv[1], int(sys.argv[2]))
+            break
+        except (OSError, PdfReadError, AssertionError):
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.5)

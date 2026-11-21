@@ -19,31 +19,22 @@ try {
     $metrics = Get-Content (Join-Path $temp 'print-metrics.json') -Raw | ConvertFrom-Json
     Write-Output "52-page print child peak job memory: $($metrics.peak_job_bytes) bytes"
     if ($metrics.peak_job_bytes -le 0 -or $metrics.peak_job_bytes -ge 600MB) { throw 'Peak print memory exceeded 600 MiB acceptance budget' }
-    $deadline = [DateTime]::UtcNow.AddSeconds(60)
-    do {
-        if (Test-Path $result) {
-            & $python (Join-Path $PSScriptRoot 'verify_print_output.py') $result 52 2>$null
-            if ($LASTEXITCODE -eq 0) {
-                $gs = Join-Path $root 'vendor\ghostscript\bin\gswin64c.exe'
-                $ink = & $gs -q -dSAFER -dBATCH -dNOPAUSE -sDEVICE=inkcov -sOutputFile=- $result
-                if ($LASTEXITCODE) { throw 'Cannot check printed ink coverage' }
-                $coverage = @($ink | Where-Object { $_ -match 'CMYK OK' })
-                if ($coverage.Count -ne 52) { throw 'Ink coverage page count mismatch' }
-                foreach ($line in $coverage) {
-                    $values = $line.Trim() -split '\s+'
-                    if (([double]::Parse($values[0],[cultureinfo]::InvariantCulture) + [double]::Parse($values[1],[cultureinfo]::InvariantCulture) + [double]::Parse($values[2],[cultureinfo]::InvariantCulture) + [double]::Parse($values[3],[cultureinfo]::InvariantCulture)) -le 0) { throw 'Blank printed page' }
-                }
-                & $python (Join-Path $PSScriptRoot 'test_vector_rejection.py') $temp $name
-                if ($LASTEXITCODE) { throw 'Vector preflight rejection checks failed' }
-                Write-Output 'PASS: 52 nonblank vector pages, no image XObjects, bounded peak memory'
-                exit 0
-            }
-        }
-        Start-Sleep -Milliseconds 500
-    } while ([DateTime]::UtcNow -lt $deadline)
-    throw 'The Windows printer did not produce all 52 pages'
+    & $python (Join-Path $PSScriptRoot 'verify_print_output.py') $result 52 --wait
+    if ($LASTEXITCODE) { throw 'The Windows printer did not produce all 52 vector pages' }
+    $gs = Join-Path $root 'vendor\ghostscript\bin\gswin64c.exe'
+    $ink = & $gs -q -dSAFER -dBATCH -dNOPAUSE -sDEVICE=inkcov -sOutputFile=- $result
+    if ($LASTEXITCODE) { throw 'Cannot check printed ink coverage' }
+    $coverage = @($ink | Where-Object { $_ -match 'CMYK OK' })
+    if ($coverage.Count -ne 52) { throw 'Ink coverage page count mismatch' }
+    foreach ($line in $coverage) {
+        $values = $line.Trim() -split '\s+'
+        if (([double]::Parse($values[0],[cultureinfo]::InvariantCulture) + [double]::Parse($values[1],[cultureinfo]::InvariantCulture) + [double]::Parse($values[2],[cultureinfo]::InvariantCulture) + [double]::Parse($values[3],[cultureinfo]::InvariantCulture)) -le 0) { throw 'Blank printed page' }
+    }
+    & $python (Join-Path $PSScriptRoot 'test_vector_rejection.py') $temp $name
+    if ($LASTEXITCODE) { throw 'Vector preflight rejection checks failed' }
+    Write-Output 'PASS: 52 nonblank vector pages, no image XObjects, bounded peak memory'
 } finally {
     Remove-Printer -Name $name -ErrorAction SilentlyContinue
     Remove-PrinterPort -Name $result -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $temp -Recurse -Force
+    Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
 }
