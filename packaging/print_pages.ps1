@@ -1,5 +1,15 @@
 param([string]$Printer,[int]$PaperKind,[int]$Tray,[string]$Pdf,[int]$Pages)
 $ErrorActionPreference = 'Stop'
+trap {
+    $errorRecord = $_
+    $e = $_.Exception
+    while ($e) {
+        [Console]::Error.WriteLine("VRPRINT {0} HRESULT={1} line={2}: {3}", $e.GetType().Name, $e.HResult, $errorRecord.InvocationInfo.ScriptLineNumber, $e.Message)
+        $e = $e.InnerException
+    }
+    exit 7
+}
+
 Add-Type -AssemblyName System.Drawing
 Add-Type -Path (Join-Path $PSScriptRoot 'CheckedPrint.cs')
 $p = New-Object Drawing.Printing.PrinterSettings

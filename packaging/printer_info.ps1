@@ -1,5 +1,15 @@
 param([string]$Printer, [int]$PaperKind = 1)
 $ErrorActionPreference = 'Stop'
+trap {
+    $errorRecord = $_
+    $e = $_.Exception
+    while ($e) {
+        [Console]::Error.WriteLine("VRPRINT {0} HRESULT={1} line={2}: {3}", $e.GetType().Name, $e.HResult, $errorRecord.InvocationInfo.ScriptLineNumber, $e.Message)
+        $e = $e.InnerException
+    }
+    exit 7
+}
+
 [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
 Add-Type -AssemblyName System.Drawing
 $p = New-Object Drawing.Printing.PrinterSettings

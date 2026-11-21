@@ -11,7 +11,8 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 
-from .config import Settings
+from .config import Settings, data_dir
+from .diagnostics import ErrorCapture
 
 MAX_PAGES = 250
 MEMORY = 768 * 1024**2
@@ -22,6 +23,9 @@ ERRORS = {
     3: "PDF page size differs from selected printer paper. Select matching paper.",
     4: "Flatten optional-content layers before sending a PDF print job.",
     5: "PDF processing failed or exceeded the document limits.",
+    6: "Windows printer configuration failed (code 6). See print-error.log in the data folder.",
+    7: "Windows page rendering or spooling failed (code 7). See print-error.log in the data folder.",
+    8: "Windows printing exceeded its deadline (code 8). Check the printer before retrying.",
 }
 
 
@@ -102,9 +106,10 @@ def execute(operation, path, settings=None):
         start_new_session=os.name != "nt",
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
+    errors = ErrorCapture(child.stderr)
     deadline = time.monotonic() + TIMEOUT
     try:
         while child.poll() is None:
@@ -134,6 +139,14 @@ def execute(operation, path, settings=None):
         elif child.poll() is None:
             child.kill()
         child.wait()
+        detail = errors.finish()
+        child.stderr.close()
+        if operation == "print" and child.returncode:
+            folder = data_dir()
+            folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+            (folder / "print-error.log").write_text(
+                f"Print child exit code: {child.returncode}\n" + detail, encoding="utf-8"
+            )
 
 
 def main(operation, path, config):
@@ -180,6 +193,7 @@ if __name__ == "__main__":
             if str(error).startswith("Flatten optional")
             else 5
         )
-    except Exception:
-        result = 5
+    except Exception as error:
+        result = getattr(error, "print_code", 5)
+        print(f"VRPRINT worker {type(error).__name__} code={result}", file=sys.stderr)
     sys.exit(result)

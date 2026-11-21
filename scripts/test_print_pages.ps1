@@ -15,7 +15,7 @@ try {
     & $python -c "from voucher_reorder.alignment import create; from voucher_reorder.config import Settings; from pypdf import PdfWriter; import sys; create(sys.argv[1], Settings()); w=PdfWriter(); w.append(sys.argv[1]); w.append(sys.argv[1]); w.write(sys.argv[2])" (Join-Path $temp 'sample.pdf') $source
     if ($LASTEXITCODE) { throw 'Unable to generate synthetic batch' }
     & $python -c "from pathlib import Path; from voucher_reorder.config import Settings; from voucher_reorder.bounded import execute; import sys; execute('print',Path(sys.argv[1]),Settings(printer=sys.argv[2]))" $source $name
-    if ($LASTEXITCODE) { throw 'Bounded Windows print failed' }
+    if ($LASTEXITCODE) { Get-Content (Join-Path $env:LOCALAPPDATA 'VoucherReorder\print-error.log'); throw 'Bounded Windows print failed' }
     $deadline = [DateTime]::UtcNow.AddSeconds(30)
     do {
         if (Test-Path $result) {
