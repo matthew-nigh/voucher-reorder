@@ -9,9 +9,11 @@ try {
     $python=Join-Path $AppRoot 'runtime\python.exe'
     & $python -c "from voucher_reorder.config import *; save(data_dir()/'settings.json', Settings())"
     if ($LASTEXITCODE) { throw 'Could not initialize UI test settings' }
+    $captures=Join-Path $AppRoot '..\settings-previews'
+    $null=New-Item -ItemType Directory -Path $captures -Force
     foreach ($scale in @(1,1.5,2)) {
         foreach ($small in @($false,$true)) {
-            $arguments=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $AppRoot 'packaging\settings.ps1'),'-SmokeTest','-SmokeScale',$scale)
+            $arguments=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $AppRoot 'packaging\settings.ps1'),'-SmokeTest','-SmokeScale',$scale,'-SmokeCapture',(Join-Path $captures "preview-$scale-$small.png"))
             if ($small) { $arguments+='-SmokeSmall' }
             & (Join-Path $PSHOME 'powershell.exe') @arguments
             if ($LASTEXITCODE) { throw "Settings UI failed: scale=$scale small=$small" }

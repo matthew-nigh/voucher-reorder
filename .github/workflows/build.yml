@@ -66,6 +66,13 @@ jobs:
         shell: powershell
         timeout-minutes: 3
         run: scripts/test_settings.ps1
+      - name: Upload settings preview captures
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Settings-previews
+          path: build/settings-previews/*.png
+          if-no-files-found: ignore
       - name: Print a synthetic batch to a Windows file port
         shell: powershell
         timeout-minutes: 8

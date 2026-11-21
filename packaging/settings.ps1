@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-param([switch]$SmokeTest, [double]$SmokeScale=1, [switch]$SmokeSmall)
+param([switch]$SmokeTest, [double]$SmokeScale=1, [switch]$SmokeSmall, [string]$SmokeCapture)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -24,6 +24,14 @@ $form.AutoScaleMode = 'Dpi'
 $form.MinimumSize = [Drawing.Size]::new(360,300)
 $form.ClientSize = [Drawing.Size]::new(680, [Math]::Min(660, [Windows.Forms.Screen]::PrimaryScreen.WorkingArea.Height - 80))
 $form.StartPosition = 'CenterScreen'; $form.Font = New-Object Drawing.Font('Segoe UI', 10)
+function Fit-SettingsWindow {
+    $area = [Windows.Forms.Screen]::FromControl($form).WorkingArea
+    $form.Width = [Math]::Min($form.Width,$area.Width)
+    $form.Height = [Math]::Min($form.Height,$area.Height)
+    $form.Left = [Math]::Max($area.Left,[Math]::Min($form.Left,$area.Right-$form.Width))
+    $form.Top = [Math]::Max($area.Top,[Math]::Min($form.Top,$area.Bottom-$form.Height))
+}
+$form.Add_Shown({ Fit-SettingsWindow })
 $tabs = New-Object Windows.Forms.TabControl; $tabs.Dock = 'Fill'
 $printTab = New-Object Windows.Forms.TabPage; $printTab.Text = 'Print and setup'; $printTab.AutoScroll = $true
 $alignTab = New-Object Windows.Forms.TabPage; $alignTab.Text = 'Section order and alignment'; $alignTab.AutoScroll = $true
@@ -308,6 +316,7 @@ if ($SmokeTest) {
             $form.Font = [Drawing.Font]::new('Segoe UI', [single](10*$SmokeScale))
         }
         if ($SmokeSmall) { $form.ClientSize = [Drawing.Size]::new(420,320) }
+        Fit-SettingsWindow
         [Windows.Forms.Application]::DoEvents()
         for ($a=0; $a -lt 6; $a++) {
             for ($b=0; $b -lt 6; $b++) {
@@ -324,6 +333,16 @@ if ($SmokeTest) {
                     }
                 }
             }
+        }
+        if ($SmokeCapture) {
+            $sourceOrder.SelectedIndex=0; $order.SelectedIndex=2
+            [Windows.Forms.Application]::DoEvents()
+            $bitmap=[Drawing.Bitmap]::new($form.Width,$form.Height)
+            try {
+                $form.DrawToBitmap($bitmap,[Drawing.Rectangle]::new(0,0,$form.Width,$form.Height))
+                $bitmap.Save($SmokeCapture,[Drawing.Imaging.ImageFormat]::Png)
+            } finally { $bitmap.Dispose() }
+            $sourceOrder.SelectedIndex=5; $order.SelectedIndex=5
         }
         # Small windows must scroll to the final settings action without losing bands.
         $alignTab.ScrollControlIntoView($saveAlignment); [Windows.Forms.Application]::DoEvents()
