@@ -21,6 +21,14 @@
 - Public user guide, maintainer/build docs, complete third-party notices and matching
   source artifacts; GPL-3.0-or-later remains unchanged. No tag/release/merge is created.
 
+## Automated results
+
+71 Linux tests and lint/format checks pass. GitHub Windows CI has passed packaged
+runtime tests, optional-printer provisioning logic tests, and a real standard-user
+installation test covering UI construction, upgrade, settings/held-job preservation,
+downgrade refusal, repair and uninstall. These tests use fake data. The privileged
+printer API tests are mocked; they do not prove a real Windows driver or printer.
+
 ## Still needs real Windows/QuickBooks/printer acceptance
 
 The CI Windows host is not a Windows 10/11 office PC with QuickBooks and a physical

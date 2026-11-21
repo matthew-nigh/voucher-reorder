@@ -39,3 +39,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Existing owned printer was not upgrade-safe' }
 & "$PSScriptRoot\..\packaging\printer.ps1" -Action remove -TargetSid 'S-1-5-21-1-2-3-1001' -NoDialogs
 if ($LASTEXITCODE -ne 0 -or $global:VoucherTestState.Printer -or $global:VoucherTestState.Port) { throw 'Virtual cleanup failed' }
 Write-Output 'Virtual printer setup, original-user permission, reuse and cleanup passed with mocked printer APIs.'
+$global:VoucherTestState.Fail=$true
+& "$PSScriptRoot\..\packaging\printer.ps1" -Action install -TargetSid 'S-1-5-21-1-2-3-1001' -NoDialogs
+if ($LASTEXITCODE -ne 1 -or $global:VoucherTestState.Port -or $global:VoucherTestState.Printer) { throw 'Failed provisioning did not roll back its port' }
+Write-Output 'Virtual driver failure rolls back without leaving a port.'
+# Reset the expected failure's exit status for the workflow shell.
+exit 0

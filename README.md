@@ -74,7 +74,9 @@ loaded. Interrupted print attempts are marked for review and never auto-retried.
 
 Settings and mode persist. Activation updates the shortcuts/startup entry and
 current-version pointer; failures attempt to restore the previous version.
-Same-version repair is allowed; lower versions are refused. Old owned deployments
+Same-version repair is allowed; lower versions are refused. Silent setup (`/S`)
+installs/upgrades the per-user app without requesting UAC; enable the optional
+virtual printer later from Settings. Old owned deployments
 are removed after activation; files still locked by Windows/security software are
 retained safely and cleanup is retried on the next successful install. If setup is
 interrupted, rerun it: a maintenance marker deliberately prevents printing until
