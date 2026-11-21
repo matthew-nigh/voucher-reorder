@@ -47,7 +47,7 @@ def forward(pdf, settings, appdata):
     from .printing import validate_pages
 
     printer = settings.printer
-    validate_pages(pdf, settings)
+    pages = validate_pages(pdf, settings)
     result = subprocess.run(
         powershell("printer_info.ps1", "-Printer", printer, "-PaperKind", settings.paper_kind),
         capture_output=True,
@@ -67,29 +67,8 @@ def forward(pdf, settings, appdata):
 
     if not printer or printer.casefold() == "voucher reorder":
         raise ValueError("Select a physical printer in Voucher Reorder Settings.")
-    appdata = Path(appdata)
-    appdata.mkdir(parents=True, exist_ok=True, mode=0o700)
-    preferences = appdata / "SumatraPDF-settings.txt"
-    if not preferences.exists():
-        preferences.write_text(
-            "RememberOpenedFiles = false\nRememberStatePerDocument = false\n"
-            "CheckForUpdates = false\nReuseInstance = false\n",
-            encoding="utf-8",
-        )
-    run(
-        [
-            ROOT / "vendor/sumatra/SumatraPDF.exe",
-            "-appdata",
-            appdata,
-            "-print-to",
-            printer,
-            "-print-settings",
-            f"noscale,simplex,1x,paperkind={settings.paper_kind},disable-auto-rotation"
-            + (f",bin={settings.tray}" if settings.tray else ""),
-            "-silent",
-            pdf,
-        ]
-    )
+    run(powershell("print_pages.ps1", "-Printer", printer, "-PaperKind", settings.paper_kind,
+                   "-Tray", settings.tray, "-Pdf", pdf, "-Pages", pages))
 
 
 def powershell(script, *args):

@@ -32,7 +32,10 @@ def process_one(queue, settings, converter=convert, sender=forward):
                     execute("print", job.parent / "output.pdf", config)
                 else:
                     sender(job.parent / "output.pdf", config, queue.root.parent / "sumatra")
-                queue.update(job, "sent", "Sent to Windows printer queue; verify physical output.")
+                receipt = job.parent / "windows-job-id"
+                job_id = receipt.read_text() if receipt.exists() else ""
+                suffix = f" (job {job_id})" if job_id.isdecimal() else ""
+                queue.update(job, "sent", f"Sent to Windows printer queue{suffix}; verify physical output.")
             except Exception as error:
                 attempted = queue.read(job)["state"] == "printing"
                 # Only controlled validation messages may reach status; never raw PDF/parser data.

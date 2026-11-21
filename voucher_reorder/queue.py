@@ -56,7 +56,7 @@ class Queue:
             self.clean_payload(job)
 
     def clean_payload(self, job):
-        for name in ("input.ps", "input.pdf", "output.pdf"):
+        for name in ("input.ps", "input.pdf", "output.pdf", "page.bmp"):
             try:
                 (job.parent / name).unlink(missing_ok=True)
             except OSError:

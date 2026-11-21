@@ -76,6 +76,10 @@ def execute(operation, path, settings=None):
                 raise ValueError(ERRORS[5])
             if operation == "prepare" and any(p.stat().st_size > MAX_OUTPUT for p in path.glob("*.pdf")):
                 raise ValueError(ERRORS[5])
+            if operation == "print":
+                bitmap = path.parent / "page.bmp"
+                if bitmap.is_file() and bitmap.stat().st_size > MAX_OUTPUT:
+                    raise ValueError(ERRORS[5])
             time.sleep(0.05)
         if child.returncode:
             raise ValueError(ERRORS.get(child.returncode, ERRORS[5]))
