@@ -3,7 +3,7 @@
 import threading
 import time
 
-from .bounded import execute
+from .bounded import ERRORS, execute
 from .config import Settings, atomic_json, data_dir, load
 from .inbox import Inbox
 from .locking import FileLock
@@ -45,13 +45,16 @@ def process_one(queue, settings, converter=convert, sender=forward):
                 detail = (
                     str(error)
                     if type(error) is ValueError
-                    and str(error).startswith(
-                        (
-                            "Flatten optional",
-                            "PDF page size",
-                            "Printer paper",
-                            "Set the printer",
-                            "The selected tray",
+                    and (
+                        str(error) in ERRORS.values()
+                        or str(error).startswith(
+                            (
+                                "Flatten optional",
+                                "PDF page size",
+                                "Printer paper",
+                                "Set the printer",
+                                "The selected tray",
+                            )
                         )
                     )
                     else "Inspect the real printer queue and paper before reprinting."

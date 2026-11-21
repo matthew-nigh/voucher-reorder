@@ -62,7 +62,15 @@ def main():
     args = parser.parse_args()
     root, data = args.root, data_dir()
     if args.action == "install":
-        install(root, args.candidate, data, lambda path, ver: integrate(root, path, ver))
+        result = install(root, args.candidate, data, lambda path, ver: integrate(root, path, ver))
+        from voucher_reorder.provisioning import check_version
+
+        try:
+            check_version(data, result["version"])
+        except OSError:
+            # Activation has committed: never report a staging failure that makes
+            # NSIS delete the now-active deployment. Settings can retry this check.
+            print("App updated. Check provisioning version in Settings before virtual printing.")
     else:
         import winreg
 

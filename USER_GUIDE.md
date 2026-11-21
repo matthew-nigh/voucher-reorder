@@ -4,11 +4,12 @@
 
 1. **Install or upgrade.** Run `VoucherReorder-0.2.0-Setup.exe` normally. If SmartScreen
    appears, confirm the download came from this project, then choose **More info →
-   Run anyway**. Setup starts in PDF mode for your Windows account. For virtual mode,
-   ask an administrator to install the matching protected provisioning package,
-   then click **Enable virtual printer**. Before upgrading a legacy LPR printer,
-   reconcile pending jobs and have its administrator migrate or remove the old queue. For updates, run the newer
-   installer without uninstalling first. Your settings stay saved.
+   Run anyway**. PDF mode needs no administrator access. For virtual mode, select
+   **Virtual printer (one administrator prompt)** in setup. Setup includes the matching
+   provisioning package; approve one UAC prompt or decline and use PDF mode. You can
+   also enable it later in Settings. Run newer installers without uninstalling first.
+   If the machine package is older, the app upgrades in PDF mode and explains how to
+   update the optional component. Your printer/layout settings stay saved.
 2. **Choose the real printer.** Open Voucher Reorder from Start. Its top line shows
    **Virtual printer** or **PDF handoff** mode. Select your real printer, matching
    paper size and tray. On the Alignment tab, match the three boxes to your stock's
@@ -54,3 +55,12 @@ paper, you may delete `%LOCALAPPDATA%\VoucherReorder` to remove those saved file
 For help, share only Windows/QuickBooks versions, printer model, stock order and
 measurements or photos of **fake alignment pages**. Never post real checks, bank
 numbers, payee names, settings files or spool files to the public project.
+
+Printing preserves vector text and paths through the Windows driver. Use a vector
+PDF export: scanned/image PDFs, raster fallback and blank vector pages are refused.
+Batches can contain up to 250 pages; printing time scales with page count. Recheck
+alignment and MICR on the intended printer before using check stock.
+
+To remove machine provisioning, reconcile/cancel Windows queue jobs and uninstall
+**Voucher Reorder Printer Provisioning** from Windows Apps as administrator. The
+per-user app and its PDF mode are independent of that package.

@@ -10,6 +10,11 @@ $app = Join-Path $root 'app.py'
 $store = Join-Path $env:LOCALAPPDATA 'VoucherReorder'
 $configPath = Join-Path $store 'settings.json'
 $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+$statusFile = Join-Path $store 'mode-status.txt'
+if (-not $SmokeTest -and (Test-Path $statusFile)) {
+    $null = [Windows.Forms.MessageBox]::Show([IO.File]::ReadAllText($statusFile),'Voucher Reorder','OK','Information')
+    Remove-Item $statusFile
+}
 $form = New-Object Windows.Forms.Form
 $form.Text = 'Voucher Reorder'
 $form.ClientSize = [Drawing.Size]::new(680, [Math]::Min(660, [Windows.Forms.Screen]::PrimaryScreen.WorkingArea.Height - 80))

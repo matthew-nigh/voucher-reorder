@@ -70,6 +70,10 @@ jobs:
         run: scripts/test_virtual_setup.ps1
       - name: Build upgrade-test installer
         run: python scripts/build_windows.py --version 0.2.1
+      - name: Exercise integrated provisioning, version checks and uninstall
+        shell: powershell
+        timeout-minutes: 6
+        run: scripts/test_provisioning.ps1 -Installer dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.1-Setup.exe
       - name: Install and upgrade in a real standard-user account
         shell: powershell
         timeout-minutes: 6

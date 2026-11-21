@@ -21,6 +21,7 @@ DOCS = [
     "TESTING_ON_WINDOWS.md",
     "NEXT_STEPS.md",
     "THIRD_PARTY_NOTICES.md",
+    "SECURITY_REVIEW.md",
 ]
 
 

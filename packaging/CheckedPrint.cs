@@ -38,7 +38,7 @@ public static class CheckedPrint {
     [DllImport("pdfium", CallingConvention=CallingConvention.Cdecl)] static extern void FPDF_ClosePage(IntPtr page);
     [DllImport("pdfium", CallingConvention=CallingConvention.Cdecl)] static extern double FPDF_GetPageWidth(IntPtr page);
     [DllImport("pdfium", CallingConvention=CallingConvention.Cdecl)] static extern double FPDF_GetPageHeight(IntPtr page);
-    [DllImport("pdfium", CallingConvention=CallingConvention.Cdecl)] static extern void FPDF_RenderPage(IntPtr dc,IntPtr page,int x,int y,int w,int h,int rotation,int flags);
+    [DllImport("pdfium", CallingConvention=CallingConvention.Cdecl)] static extern int FPDF_RenderPage(IntPtr dc,IntPtr page,int x,int y,int w,int h,int rotation,int flags);
 
     static int Check(int result) {
         if (result <= 0) throw new IOException("Printer rejected the document or page.");
@@ -68,7 +68,8 @@ public static class CheckedPrint {
             int w=(int)Math.Round(width*GetDeviceCaps(dc,88)/100.0);
             int h=(int)Math.Round(height*GetDeviceCaps(dc,90)/100.0);
             // FPDF_PRINTING | FPDF_ANNOT. EMF mode uses GDI paths/text, not a render bitmap.
-            FPDF_RenderPage(recording,page,0,0,w,h,0,0x800|1);
+            if (FPDF_RenderPage(recording,page,0,0,w,h,0,0x800|1)==0)
+                throw new IOException("PDFium vector rendering failed.");
             emf=CloseEnhMetaFile(recording); recording=IntPtr.Zero;
             if (emf==IntPtr.Zero || GetEnhMetaFileBits(emf,0,IntPtr.Zero)>64*1024*1024)
                 throw new IOException("Vector page unavailable or exceeds limit.");

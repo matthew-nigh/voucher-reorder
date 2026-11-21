@@ -13,6 +13,7 @@ Dependency versions, URLs and SHA-256 checksums are in
 | CPython embeddable x64 | 3.13.12 | PSF-2.0 and historical Python notices; interpreter and standard library |
 | pypdf | 7.1.1 | BSD-3-Clause; PDF object/resource manipulation |
 | Ghostscript | 10.08.0 | AGPL-3.0-or-later; separate, unmodified PostScript-to-PDF executable |
+| PDFium (from pypdfium2 Windows wheel) | 159.0.8149.0 / wheel 5.15.2 | BSD-style PDFium license and bundled third-party notices; vector EMF/GDI printing |
 | NSIS installer stubs/plugins | 3.11 or newer | zlib/libpng license; installer only. NSIS build-tool components have additional terms in `NSIS-COPYING.txt` |
 
 GPLv3 and AGPLv3 have explicit section-13 interoperability; **AGPL-covered parts
@@ -51,7 +52,7 @@ Authenticode signature, and installs it as a shared system prerequisite. Microso
 terms apply to that prerequisite; it is not relicensed by this project. See
 [Microsoft's redistribution documentation](https://learn.microsoft.com/en-us/cpp/windows/redistributing-visual-cpp-files).
 The shared runtime and OS driver are left installed on uninstall. PDF handoff never
-invokes Ghostscript or installs this prerequisite; it uses the packaged Python runtime and the Windows PDF renderer.
+invokes Ghostscript or installs this prerequisite; it uses the packaged Python runtime and the statically linked PDFium DLL (only Windows system DLL imports).
 
 ## Source availability and reproducing modifications
 
@@ -82,3 +83,15 @@ pytest (MIT), ReportLab (BSD), PyMuPDF (AGPL), Ruff (MIT), 7-Zip (LGPL/BSD/unRAR
 build-tool terms), GitHub Actions and the NSIS compiler are not shipped as runtime
 application dependencies. PyMuPDF is only a test renderer. The bundled NSIS
 executable stubs/plugins are covered above. No test-generated financial data is real.
+
+## PDFium vector engine
+
+The exact Windows wheel and SHA-256 are pinned in `packaging/dependencies.json`.
+Only `pypdfium2_raw/pdfium.dll`, its version metadata and the wheel's complete
+`licenses/` tree are extracted into `vendor/pdfium`; the Python wrapper is not used.
+PDFium and its transitive libraries retain those original notices, including the
+wheel's build-license notices. Upstream source/build instructions are available from
+[PDFium](https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8149) and
+[pypdfium2](https://github.com/pypdfium2-team/pypdfium2/tree/5.15.2).
+The PDFium engine is unmodified. Its permissive license does not require a
+corresponding-source archive; the bundled copyleft source offer above remains intact.
