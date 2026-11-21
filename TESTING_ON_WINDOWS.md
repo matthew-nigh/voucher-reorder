@@ -123,8 +123,10 @@ screenshots to this public repository.**
 ## Automated Windows regression coverage
 
 CI requires the PDF file-port driver (absence fails), prints six consecutive ten-page vector
-jobs, checks page count, Letter dimensions, ink on every page and no image XObjects,
-and records Windows Job peak memory below 256 MiB per job, flat across consecutive jobs. Vector preflight rejects raster
+jobs, checks page count, Letter dimensions, visible vector content, sequential page
+markers and no image XObjects. It measures Windows Job peaks below 256 MiB per job
+with less than 32 MiB variation, worker private memory variation below 16 MiB after
+garbage collection, payload/compiler-temp cleanup and empty waiting/spool queues. Vector preflight rejects raster
 fallback and blank pages before StartDoc; test unsupported real exports separately.
 CI also exercises the real provisioning package install/upgrade/uninstall and version
 mismatch rejection, followed by a real standard-user install/upgrade/repair/uninstall.

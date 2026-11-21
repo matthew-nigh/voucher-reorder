@@ -7,6 +7,7 @@ import os
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -122,6 +123,18 @@ def constrain(operation="prepare"):
 
 def execute(operation, path, settings=None):
     path = Path(path).resolve()
+    if operation == "print":
+        # PowerShell's C# compiler also needs private scratch space. Remove it
+        # after every child exit, including timeout; queue recovery retries locks.
+        with tempfile.TemporaryDirectory(
+            prefix="print-temp-", dir=path.parent, ignore_cleanup_errors=True
+        ) as scratch:
+            return _execute(operation, path, settings, scratch)
+    return _execute(operation, path, settings)
+
+
+def _execute(operation, path, settings=None, scratch=None):
+    path = Path(path).resolve()
     args = [
         sys.executable,
         "-m",
@@ -133,8 +146,12 @@ def execute(operation, path, settings=None):
     budget_file = path.parent / "print-budget.json"
     if operation == "print":
         budget_file.unlink(missing_ok=True)
+    environment = os.environ.copy()
+    if scratch:
+        environment.update(TEMP=scratch, TMP=scratch, TMPDIR=scratch)
     child = subprocess.Popen(
         args,
+        env=environment,
         cwd=Path(__file__).resolve().parents[1],
         start_new_session=os.name != "nt",
         stdin=subprocess.DEVNULL,

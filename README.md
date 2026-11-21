@@ -122,7 +122,8 @@ how to enable the updated optional component. App installation itself needs no U
 
 The expected workload is ten pages or fewer per job, including consecutive jobs.
 Printing has a 384 MiB combined process-tree cap; PDF preparation retains its
-768 MiB cap, 250-page validation ceiling, and 256 MiB expanded-content limit. Inspection/conversion have 120-second deadlines;
+768 MiB cap, 250-page validation ceiling, and 256 MiB expanded-content limit.
+Inspection/conversion have 120-second deadlines;
 printing gets 60 seconds for startup plus 30 seconds per page (six minutes for ten
 pages), with a separate 30-second printer-probe allowance.
 The pinned, hash-verified PDFium DLL uses its vector EMF/GDI print mode. Text and
@@ -136,9 +137,13 @@ content in the source application without converting text to images. Recheck phy
 alignment and MICR with the intended printer/stock after upgrading.
 
 CI prints six consecutive ten-page jobs to Microsoft's PDF file port, checks every page
-for nonblank vector output, absence of image XObjects and sequential vector page IDs, and drains six queued jobs through the same worker, checking payload cleanup,
+for nonblank vector output, absence of image XObjects and sequential vector page IDs.
+It drains six queued jobs through the same worker, checking payload cleanup,
 zero waiting/spool backlog, and flat worker memory. It requires the print tree's
-measured peak commit to stay below 256 MiB per job, with less than 32 MiB variation across six jobs. Printer failures use distinct codes
+measured peak commit to stay below 256 MiB per job, with less than 32 MiB variation
+across six jobs, and worker private memory variation below 16 MiB after garbage
+collection. Compiler scratch files live in private per-job directories, are removed
+on exit, and are retried by terminal-job recovery if locked. Printer failures use distinct codes
 (configuration 6, vector/spool 7, timeout 8, unexpected termination 9) and an 8 KiB sanitized local
 `%LOCALAPPDATA%\VoucherReorder\print-error.log`; no document output is retained.
 

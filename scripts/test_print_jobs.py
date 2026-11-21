@@ -98,6 +98,7 @@ def main(folder, printer, verifier_python):
         assert not any(p.suffix in (".pdf", ".ps", ".bmp", ".emf") for p in job.parent.iterdir())
         assert sum(queue.read(j)["state"] == "queued" for j in jobs) == 5 - index
         assert not list(folder.rglob("receiving-*"))
+        assert not list(job.parent.glob("print-temp-*")), "Compiler scratch files remain"
         gc.collect()
         worker_memory.append(private_memory())
         print(

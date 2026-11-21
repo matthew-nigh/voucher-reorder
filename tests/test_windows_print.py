@@ -135,3 +135,42 @@ def test_consecutive_job_fixtures_preserve_vector_page_ids(tmp_path):
     for first in range(1, 61, 10):
         reorder(io.BytesIO(sample_job(first)), output, Settings())
         verify(output, 10, first)
+
+
+def test_print_scratch_removed_after_child_failure(tmp_path, monkeypatch):
+    real_popen = subprocess.Popen
+    monkeypatch.setattr(bounded, "data_dir", lambda: tmp_path / "data")
+
+    def launch(args, **kwargs):
+        return real_popen(
+            [
+                sys.executable,
+                "-c",
+                'import os,pathlib; pathlib.Path(os.environ["TEMP"],"compiler.tmp").write_text("fake"); raise SystemExit(7)',
+            ],
+            **kwargs,
+        )
+
+    monkeypatch.setattr(bounded.subprocess, "Popen", launch)
+    with pytest.raises(ValueError, match="code 7"):
+        bounded.execute("print", tmp_path / "fake.pdf")
+    assert not list(tmp_path.glob("print-temp-*"))
+
+
+def test_terminal_recovery_retries_print_scratch_cleanup(tmp_path):
+    from test_engine import sample
+
+    from voucher_reorder.config import Settings, atomic_json
+    from voucher_reorder.queue import Queue
+
+    queue = Queue(tmp_path / "jobs")
+    queue.accept_bytes(sample().getvalue(), Settings())
+    job = queue.jobs()[0]
+    scratch = job.parent / "print-temp-interrupted"
+    scratch.mkdir()
+    (scratch / "compiler.tmp").write_text("fake")
+    state = queue.read(job)
+    state["state"] = "sent"
+    atomic_json(job, state)
+    Queue(queue.root, recover=True)
+    assert not scratch.exists()

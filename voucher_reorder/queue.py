@@ -61,6 +61,11 @@ class Queue:
                 (job.parent / name).unlink(missing_ok=True)
             except OSError:
                 return False
+        for scratch in job.parent.glob("print-temp-*"):
+            try:
+                shutil.rmtree(scratch)
+            except OSError:
+                return False
         return True
 
     def reconcile(self, job, state):
