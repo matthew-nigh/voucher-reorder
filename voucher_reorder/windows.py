@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -80,20 +81,33 @@ def print_run(args, code, timeout=120, capture=False):
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     ) as child:
         errors = ErrorCapture(child.stderr)
+        output = bytearray()
+
+        def drain_output():
+            for chunk in iter(lambda: child.stdout.read(4096), b""):
+                # Drain excess without retaining it; malformed printer metadata
+                # must not exhaust memory or bypass the subprocess deadline.
+                if len(output) <= 65536:
+                    output.extend(chunk[: 65537 - len(output)])
+
+        reader = threading.Thread(target=drain_output, daemon=True) if capture else None
+        if reader:
+            reader.start()
         try:
-            output = child.stdout.read(65536) if capture else None
             child.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             child.kill()
             child.wait()
             raise PrintError(8) from None
         finally:
+            if reader:
+                reader.join(timeout=2)
             detail = errors.finish()
             if detail:
                 print(detail, file=sys.stderr)
-        if child.returncode:
+        if child.returncode or len(output) > 65536:
             raise PrintError(code)
-        return output
+        return bytes(output) if capture else None
 
 
 def forward(pdf, settings, appdata=None):

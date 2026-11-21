@@ -28,10 +28,11 @@ def test_print_engine_failure_preserves_specific_code():
     assert failure.value.print_code == 7
 
 
-def test_print_engine_deadline_kills_process():
+@pytest.mark.parametrize("capture", [False, True])
+def test_print_engine_deadline_kills_process(capture):
     started = time.monotonic()
     with pytest.raises(PrintError) as failure:
-        print_run([sys.executable, "-c", "import time; time.sleep(30)"], code=7, timeout=0.1)
+        print_run([sys.executable, "-c", "import time; time.sleep(30)"], code=7, timeout=0.1, capture=capture)
     assert failure.value.print_code == 8
     assert time.monotonic() - started < 3
 
