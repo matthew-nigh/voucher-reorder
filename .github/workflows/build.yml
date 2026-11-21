@@ -62,7 +62,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Print a synthetic batch to a Windows file port
         shell: powershell
-        timeout-minutes: 4
+        timeout-minutes: 8
         run: scripts/test_print_pages.ps1
       - name: Exercise optional virtual printer setup logic
         timeout-minutes: 2

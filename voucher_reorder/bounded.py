@@ -18,6 +18,12 @@ MAX_PAGES = 250
 MEMORY = 768 * 1024**2
 MAX_OUTPUT = 256 * 1024**2
 TIMEOUT = 120
+
+
+def peak_memory():
+    return 0
+
+
 ERRORS = {
     2: "PDF must be unencrypted and contain 1 to 250 pages.",
     3: "PDF page size differs from selected printer paper. Select matching paper.",
@@ -88,6 +94,18 @@ def constrain():
     ):
         raise ctypes.WinError(ctypes.get_last_error())
     # Retain the sole non-inheritable handle until exit, including forced termination.
+    kernel.QueryInformationJobObject.argtypes = [w.HANDLE, ctypes.c_int, w.LPVOID, w.DWORD, w.LPVOID]
+
+    def query_peak():
+        measured = Extended()
+        if not kernel.QueryInformationJobObject(
+            job, 9, ctypes.byref(measured), ctypes.sizeof(measured), None
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return measured.peak_job
+
+    global peak_memory
+    peak_memory = query_peak
 
 
 def execute(operation, path, settings=None):
@@ -100,6 +118,9 @@ def execute(operation, path, settings=None):
         str(path),
         json.dumps(asdict(settings or Settings())),
     ]
+    budget_file = path.parent / "print-budget.json"
+    if operation == "print":
+        budget_file.unlink(missing_ok=True)
     child = subprocess.Popen(
         args,
         cwd=Path(__file__).resolve().parents[1],
@@ -110,23 +131,25 @@ def execute(operation, path, settings=None):
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     errors = ErrorCapture(child.stderr)
-    deadline = time.monotonic() + TIMEOUT
+    started = time.monotonic()
+    deadline = started + TIMEOUT
+    budget_loaded = False
     try:
         while child.poll() is None:
             if operation == "receive" and ((path / "stop").exists() or (path / "maintenance.json").exists()):
                 raise ValueError("Spool receipt interrupted.")
             if time.monotonic() >= deadline:
-                raise ValueError(ERRORS[5])
+                raise ValueError(ERRORS[8 if operation == "print" else 5])
             if operation == "prepare" and any(p.stat().st_size > MAX_OUTPUT for p in path.glob("*.pdf")):
                 raise ValueError(ERRORS[5])
-            if operation == "print":
-                bitmap = path.parent / "page.bmp"
+            if operation == "print" and not budget_loaded and budget_file.exists():
                 try:
-                    size = bitmap.stat().st_size
-                except FileNotFoundError:
-                    size = 0
-                if size > MAX_OUTPUT:
-                    raise ValueError(ERRORS[5])
+                    pages = json.loads(budget_file.read_text())["pages"]
+                    if type(pages) is int and 1 <= pages <= MAX_PAGES:
+                        deadline = started + TIMEOUT * (pages + 2)
+                        budget_loaded = True
+                except (OSError, ValueError, KeyError):
+                    pass  # Atomic publication may not yet be visible.
             time.sleep(0.05)
         if child.returncode:
             raise ValueError(ERRORS.get(child.returncode, ERRORS[5]))
@@ -177,7 +200,11 @@ def main(operation, path, config):
         validate_pages(path / "output.pdf", settings)
         return 0
     if operation == "print":
-        forward(path, settings, path.parents[2] / "sumatra")
+        from .config import atomic_json
+
+        atomic_json(path.parent / "print-budget.json", {"pages": validate_pages(path, settings)})
+        forward(path, settings)
+        atomic_json(path.parent / "print-metrics.json", {"peak_job_bytes": peak_memory()})
         return 0
     return 5
 

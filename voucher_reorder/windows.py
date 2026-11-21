@@ -96,7 +96,7 @@ def print_run(args, code, timeout=120, capture=False):
         return output
 
 
-def forward(pdf, settings, appdata):
+def forward(pdf, settings, appdata=None):
     from .printing import validate_pages
 
     printer = settings.printer
@@ -134,6 +134,7 @@ def forward(pdf, settings, appdata):
             pages,
         ),
         code=7,
+        timeout=120 * (pages + 1),
     )
 
 

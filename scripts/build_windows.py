@@ -97,6 +97,16 @@ def main():
         json.dumps({"identity": "org.voucher-reorder.desktop", "version": version})
     )
     vendor = stage / "vendor"
+    pdfium = vendor / "pdfium"
+    with zipfile.ZipFile(files["pdfium-runtime"]) as archive:
+        pdfium.mkdir(parents=True)
+        for name in ("pdfium.dll", "version.json"):
+            (pdfium / name).write_bytes(archive.read("pypdfium2_raw/" + name))
+        for name in archive.namelist():
+            if ".dist-info/licenses/" in name and not name.endswith("/"):
+                target = pdfium / "licenses" / name.split(".dist-info/licenses/", 1)[1]
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(archive.read(name))
     gs = vendor / "ghostscript"
     sevenzip = (
         shutil.which("7z")
