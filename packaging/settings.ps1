@@ -96,7 +96,7 @@ $null = Label 'Paper tray' 345 295 290
 $paper = Combo 15 325 320; $tray = Combo 345 325 290
 $paperInfo = Label '' 15 365 620 55
 $pdfChoice = 'Save reordered PDF (test, no physical printer)'
-function Is-PdfOutput { return ($printers.SelectedItem -eq $pdfChoice -or [string]$printers.SelectedItem -match '(?i)PDF|XPS') }
+function Is-PdfOutput { return ($printers.SelectedItem -eq $pdfChoice -or [string]$printers.SelectedItem -match '(?i)PDF|XPS.*Writer') }
 $script:papers = @(); $script:trays = @()
 $refreshPaper = {
     try {
@@ -265,7 +265,7 @@ function Save-Settings {
         $value | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $temp -Encoding UTF8
         & $python $app validate --config $temp
         if ($LASTEXITCODE -ne 0) { throw 'Check dividing lines (inside the source sheet), nudges (-1 to +1 inch), and an absolute output folder outside the Inbox.' }
-        [IO.File]::Replace($temp,$configPath,$null); $notice.Text='Settings saved. Check Job status after processing a test page.'; $alignmentNotice.Text=$notice.Text
+        [IO.File]::Replace($temp,$configPath,[NullString]::Value); $notice.Text='Settings saved. Check Job status after processing a test page.'; $alignmentNotice.Text=$notice.Text
     } finally { if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp } }
 }
 $saveAlignment = New-Object Windows.Forms.Button; $saveAlignment.Text = 'Save settings'; $saveAlignment.AutoSize = $true
