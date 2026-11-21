@@ -60,3 +60,6 @@ try {
 } finally {
     # Only CI account data is used; leave failures intact for runner diagnostics.
 }
+# The intentional version-mismatch probe leaves LASTEXITCODE=11; do not let
+# the Actions PowerShell wrapper mistake that expected rejection for a failure.
+exit 0
