@@ -81,7 +81,7 @@ public static class CheckedPrint {
                 bool solidFill = kind==76 && Marshal.ReadInt32(record,4)>=100 &&
                     Marshal.ReadInt32(record,88)==0 && Marshal.ReadInt32(record,96)==0 &&
                     (Marshal.ReadInt32(record,40)==0x00F00021 || Marshal.ReadInt32(record,40)==0x00000042 || Marshal.ReadInt32(record,40)==0x00FF0062);
-                if (((kind>=76 && kind<=81) || kind==114 || kind==116) && !solidFill) { raster=true; rasterKind=kind; }
+                if (((kind>=76 && kind<=81) || kind==93 || kind==94 || kind==70 || kind==114 || kind==116) && !solidFill) { raster=true; rasterKind=kind; }
                 if (solidFill) marks=true;
                 if ((kind>=2 && kind<=8) || (kind>=42 && kind<=47) || (kind>=62 && kind<=64) ||
                     kind==83 || kind==84 || (kind>=85 && kind<=92) || kind==96 || kind==97) marks=true;
