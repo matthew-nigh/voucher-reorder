@@ -46,7 +46,7 @@ def publish(root, value):
 def cleanup(root, keep):
     leftovers = []
     for folder in (root / "deployments").glob("app-*"):
-        if folder.name == keep:
+        if folder.name == keep or not (folder / ".retired").is_file():
             continue
         marker = folder / "PACKAGE.json"
         if not marker.is_file() or folder.is_symlink():
@@ -113,6 +113,8 @@ def install(root: Path, candidate: Path, data: Path, integrate, timeout=150):
                         (root / "current.json").unlink(missing_ok=True)
                         (root / "current.ini").unlink(missing_ok=True)
                     raise
+            if old and old["directory"] != candidate.name:
+                (root / "deployments" / old["directory"] / ".retired").touch()
             leftovers = cleanup(root, candidate.name)
             return {"version": manifest["version"], "leftovers": leftovers}
         finally:

@@ -1,7 +1,5 @@
 """Synthetic security regressions; see SECURITY_REVIEW.md for threat assumptions.
 
-Known defects are strict xfails so ordinary CI remains usable. Run with
-``pytest tests/test_security_review.py --runxfail -q`` to expose the failures.
 No real documents, installed printers, privileged operations or fixed ports are used.
 """
 
@@ -13,7 +11,6 @@ import time
 import pymupdf
 import pytest
 from pypdf import PdfWriter
-from pypdf.errors import PdfReadError
 from pypdf.generic import (
     ArrayObject,
     DecodedStreamObject,
@@ -53,7 +50,6 @@ def test_malformed_xref_finishes_in_bounded_time(tmp_path):
     assert result.returncode != 0, "Malformed input must be rejected"
 
 
-@pytest.mark.xfail(strict=True, raises=PdfReadError, reason="SR-04: one bad Inbox file aborts the scan")
 def test_bad_inbox_pdf_does_not_block_valid_job(tmp_path):
     inbox = Inbox(tmp_path)
     queue = Queue(tmp_path / "jobs")
@@ -64,7 +60,6 @@ def test_bad_inbox_pdf_does_not_block_valid_job(tmp_path):
     assert len(queue.jobs()) == 1
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="SR-05: receipt write failure is never retried")
 def test_inbox_retries_receipt_after_transient_disk_failure(tmp_path, monkeypatch):
     inbox = Inbox(tmp_path)
     queue = Queue(tmp_path / "jobs")
@@ -83,9 +78,6 @@ def test_inbox_retries_receipt_after_transient_disk_failure(tmp_path, monkeypatc
     assert inbox.receipts.exists(), "In-memory receipt suppressed the retry after disk recovered"
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="SR-05: missing receipt permits duplicate after queue expiry"
-)
 def test_receipt_failure_does_not_reprint_original_after_retention(tmp_path, monkeypatch):
     inbox = Inbox(tmp_path)
     queue = Queue(tmp_path / "jobs")
@@ -151,9 +143,6 @@ def test_identity_reorder_preserves_hidden_layer_appearance(tmp_path):
         assert reordered[0].get_pixmap().pixel(100, 100) == expected
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="SR-07: activation cleanup deletes another staged installer"
-)
 def test_install_does_not_delete_another_staged_candidate(tmp_path):
     root, data = tmp_path / "install", tmp_path / "data"
     first = candidate(root, "app-first", "1.0.0")
@@ -164,11 +153,6 @@ def test_install_does_not_delete_another_staged_candidate(tmp_path):
 
 
 @pytest.mark.parametrize("state", ["sent", "failed", "discarded", "review"])
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="SR-08: recovery skips terminal jobs whose deletion was interrupted",
-)
 def test_recovery_removes_payload_left_after_terminal_state_commit(tmp_path, state):
     queue = Queue(tmp_path / "jobs")
     queue.accept_bytes(sample().getvalue(), SETTINGS)

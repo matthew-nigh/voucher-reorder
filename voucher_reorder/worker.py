@@ -22,6 +22,7 @@ def process_one(queue, settings, converter=convert, sender=forward):
             # Existing alpha jobs have no immutable settings snapshot.
             config = Settings(**state["settings"]) if "settings" in state else settings
             try:
+                queue.reconcile(job, state)
                 queue.update(job, "converting")
                 if state.get("kind", "ps") == "ps" and converter is not convert:
                     converter(job.parent / "input.ps", job.parent / "input.pdf")
@@ -85,12 +86,15 @@ def _serve(root):
                     except (OSError, ValueError):
                         warning = "Virtual job retained or printer unavailable. Check the Windows queue and provisioning."
                 if settings.printer and settings.watch_inbox:
-                    warning = inbox.scan(queue, settings) or warning
+                    try:
+                        warning = inbox.scan(queue, settings) or warning
+                    except (ValueError, OSError):
+                        warning = "Inbox storage needs attention."
                 alert = process_one(queue, settings)
                 if alert:
                     threading.Thread(target=message, args=(alert,), daemon=True).start()
                 with queue.lock, queue.transaction():
-                    queue.expire()
+                    warning = queue.expire() or warning
                 atomic_json(
                     root / "worker.json",
                     {

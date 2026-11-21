@@ -24,7 +24,17 @@ Var Active
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
+!macro LockInstallation
+  CreateDirectory "$LOCALAPPDATA\VoucherReorder"
+  System::Call 'kernel32::CreateFileW(w "$LOCALAPPDATA\VoucherReorder\installer.guard", i 0x40000000, i 0, p 0, i 4, i 128, p 0)p.r0'
+  ${If} $0 == -1
+    SetErrorLevel 1
+    Abort "Another install or uninstall is running."
+  ${EndIf}
+  ; The OS closes this exclusive handle when the installer process exits.
+!macroend
 Function .onInit
+  !insertmacro LockInstallation
   ${IfNot} ${RunningX64}
     MessageBox MB_ICONSTOP "Voucher Reorder requires Windows 10 or 11 x64. ARM64 is not yet qualified."
     Abort
@@ -56,6 +66,7 @@ Section "Install or upgrade"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
 SectionEnd
 Function un.onInit
+  !insertmacro LockInstallation
   SetShellVarContext current
   StrCpy $INSTDIR "$LOCALAPPDATA\Programs\Voucher Reorder"
 FunctionEnd

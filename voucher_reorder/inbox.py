@@ -2,6 +2,7 @@
 
 import tempfile
 from pathlib import Path
+import json
 import os
 import time
 from contextlib import contextmanager
@@ -54,12 +55,19 @@ def read_pdf(path):
         return data
 
 
+def persist_receipt(root, key, signature):
+    path = root / "inbox-receipts.json"
+    seen = json.loads(path.read_text()) if path.exists() else {}
+    seen[key] = signature
+    atomic_json(path, seen)
+
+
 class Inbox:
     def __init__(self, root):
         self.folder = root / "Inbox"
         self.folder.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.receipts = root / "inbox-receipts.json"
-        import json
+        self.rejected = {}
 
         self.seen = json.loads(self.receipts.read_text()) if self.receipts.exists() else {}
         self.stable = {}
@@ -72,6 +80,9 @@ class Inbox:
                 stat = path.stat()
                 signature = [stat.st_size, stat.st_mtime_ns]
                 key = path.name
+                if self.rejected.get(key) == signature:
+                    warning = "Invalid PDF in Inbox. Flatten layers or export a new PDF."
+                    continue
                 if self.seen.get(key) == signature:
                     continue
                 prior, since = self.stable.get(key, (None, now))
@@ -80,10 +91,18 @@ class Inbox:
                     continue
                 if now - since < 3:
                     continue
-                payload = read_pdf(path)  # exclusive Windows handle proves the writer has closed
-                queue.accept_bytes(payload, settings)
+                try:
+                    payload = read_pdf(path)
+                except ValueError:
+                    self.rejected[key] = signature
+                    warning = "Invalid PDF in Inbox. Flatten layers or export a new PDF."
+                    continue
+                try:
+                    queue.accept_bytes(payload, settings, source=(key, signature))
+                except OSError:
+                    warning = "Cannot save the Inbox receipt or job. Check storage."
+                    continue
                 self.seen[key] = signature
-                atomic_json(self.receipts, self.seen)
             except OSError:
                 continue  # still being written/locked; do not enqueue a partial snapshot
             except ValueError:
