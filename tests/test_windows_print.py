@@ -16,6 +16,7 @@ def test_diagnostics_drop_document_output_and_redact_paths():
     assert sanitize("Private payee and account number\n") == ""
     result = sanitize('VRPRINT failed "Private payee" C:\\Users\\private\\checks.pdf\n')
     assert "Private payee" not in result and "checks.pdf" not in result
+    assert "private" not in sanitize("VRPRINT IOException HRESULT=1 line=2: private account 123")
     stream = io.BytesIO(b"private document content\n" * 10000 + b"VRPRINT OutOfMemoryException\n")
     capture = ErrorCapture(stream)
     assert capture.finish() == "VRPRINT OutOfMemoryException\n"

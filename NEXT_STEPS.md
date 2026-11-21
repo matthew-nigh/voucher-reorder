@@ -93,9 +93,11 @@ The detailed scenarios and expected results are in TESTING_ON_WINDOWS.md.
   guarantee across Windows and a physical printer. Uncertain attempts require human
   reconciliation; only unattempted held jobs can be resumed.
 - Virtual mode uses one unshared Windows spool queue for its owner. Validate
-  retained RAW job reads, ACLs, offline behavior and migration on both Windows versions.
+  retained RAW job reads, ACLs and offline behavior on both Windows versions.
+  No port-515 migration is needed; that queue was never deployed.
 - Hardware margins, paper feed/tray rules, driver overrides and MICR quality vary.
-  Vectors are preserved in the engine; downstream printer rendering may rasterize.
+  PDFium emits vector EMF/GDI and refuses raster fallback. The driver controls
+  final device encoding. Validate MICR fonts/stock on the actual hardware.
 - Locked old payload files are retained safely and retried for cleanup at a later
   successful install. Uninstall preserves user data intentionally. A hard crash or
   disk failure during activation may require rerunning the installer.
@@ -115,3 +117,9 @@ The detailed scenarios and expected results are in TESTING_ON_WINDOWS.md.
 4. **Public release gate:** review dependency/source notices and security updates,
    optional signing and the completed Windows checklist, then let Matthew approve a
    release tag. Codex must not create a tag or merge this PR in this round.
+
+The Windows follow-up embeds the matching provisioning package in the main setup;
+one optional UAC installs and configures it. Its separate Apps uninstaller removes
+an empty owned queue. A mismatched package after an app upgrade leaves PDF mode
+usable with a clear update instruction. CI additionally verifies a 52-page vector
+file-port batch and peak memory, plus real provisioning install/upgrade/uninstall.

@@ -183,7 +183,7 @@ programs. `--stage-only` prepares files; `--version 0.2.1` overrides the packagi
 version for upgrade tests (no tag/release is created). Installations need no network
 in PDF mode. Virtual setup may download Microsoft's signature-checked C++ runtime.
 
-[CI](.github/workflows/build.yml) runs Linux tests; builds on `windows-latest`;
+[CI](.github/workflows/build.yml) runs Linux tests; builds on `windows-2022`;
 checks PowerShell/UI construction, the packaged runtime and optional-printer logic;
 and installs, upgrades, refuses a downgrade, repairs and uninstalls in an actual
 standard-user Windows account. Artifacts include matching sources. Future `v*` tag
@@ -200,5 +200,5 @@ the matching source archive alongside the installer.
 
 Sources: [Microsoft driver installation permissions](https://learn.microsoft.com/en-us/windows-hardware/drivers/print/point-and-print-with-packages),
 [Windows spool job reads](https://learn.microsoft.com/en-us/windows/win32/printdocs/readprinter),
-[Windows PDF renderer](https://learn.microsoft.com/uwp/api/windows.data.pdf),
+[PDFium printing API](https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8149/public/fpdfview.h),
 [Ghostscript vector output](https://ghostscript.readthedocs.io/en/latest/VectorDevices.html).

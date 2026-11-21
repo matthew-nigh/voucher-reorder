@@ -6,13 +6,45 @@ import threading
 LIMIT = 8192
 
 
+# Free-form platform exception messages may contain document text. Retain only
+# metadata and these application-owned/system explanations, never arbitrary text.
+MESSAGES = {
+    "Out of memory.",
+    "Printer rejected the document or page.",
+    "Unavailable printer configuration.",
+    "Cannot open the selected printer.",
+    "PDFium could not load a page.",
+    "PDFium page dimensions differ from selected paper.",
+    "Cannot record vector page.",
+    "PDFium vector rendering failed.",
+    "Vector page unavailable or exceeds limit.",
+    "Cannot verify vector page.",
+    "Blank vector page refused.",
+    "Cannot load bundled PDFium.",
+    "Vector print mode unavailable.",
+    "PDFium page count mismatch.",
+    "Printer rejected vector page.",
+    "The selected printer is not installed or accessible.",
+    "Select a supported paper size in Settings.",
+}
+
+
 def sanitize(line):
-    if not line.startswith("VRPRINT "):
+    match = re.match(
+        r"^(VRPRINT (?:worker )?[A-Za-z][A-Za-z0-9_]{0,79}"
+        r"(?: HRESULT=-?[0-9]+ line=[0-9]+| code=[0-9]+)?)(?:: (.*))?",
+        line,
+    )
+    if not match:
         return ""
-    # Exception messages can contain printer names, document paths or quoted data.
-    line = re.sub(r"([\"\']).*?\1", "<redacted>", line)
-    line = re.sub(r"(?:[A-Za-z]:[\\/]|/)[^\s,;]*", "<path>", line)
-    return "".join(c for c in line if c in "\n\t" or 32 <= ord(c) < 127)[:1024]
+    metadata, detail = match.groups()
+    if detail is None:
+        return metadata + "\n"
+    if detail not in MESSAGES and not re.fullmatch(
+        r"PDF requires raster drawing; vector-only printing refused. EMF record=[0-9]+", detail
+    ):
+        detail = "Details redacted."
+    return metadata + ": " + detail + "\n"
 
 
 class ErrorCapture:

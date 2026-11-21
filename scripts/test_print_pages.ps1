@@ -33,6 +33,8 @@ try {
                     $values = $line.Trim() -split '\s+'
                     if (([double]::Parse($values[0],[cultureinfo]::InvariantCulture) + [double]::Parse($values[1],[cultureinfo]::InvariantCulture) + [double]::Parse($values[2],[cultureinfo]::InvariantCulture) + [double]::Parse($values[3],[cultureinfo]::InvariantCulture)) -le 0) { throw 'Blank printed page' }
                 }
+                & $python (Join-Path $PSScriptRoot 'test_vector_rejection.py') $temp $name
+                if ($LASTEXITCODE) { throw 'Vector preflight rejection checks failed' }
                 Write-Output 'PASS: 52 nonblank vector pages, no image XObjects, bounded peak memory'
                 exit 0
             }
