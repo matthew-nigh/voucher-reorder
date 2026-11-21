@@ -9,7 +9,7 @@ from voucher_reorder.lifecycle import stop_worker
 from voucher_reorder.windows import message, powershell, register_user
 
 
-def main(action):
+def main(action, ui=False):
     root = data_dir()
     root.mkdir(parents=True, exist_ok=True)
     config = root / "settings.json"
@@ -20,6 +20,7 @@ def main(action):
     settings = load(config)
     installed_marker = root / "virtual-installed"
     if remove and settings.mode == "pdf" and not installed_marker.exists():
+        (root / "mode-status.txt").write_text("PDF handoff mode is ready.", encoding="utf-8")
         return 0
     try:
         stop_worker(root)
@@ -51,7 +52,7 @@ def main(action):
         if action not in ("remove", "setup"):
             register_user()
         (root / "mode-status.txt").write_text(detail, encoding="utf-8")
-        if action == "setup":
+        if action == "setup" or ui:
             print(detail)
         else:
             message(detail)
@@ -64,7 +65,7 @@ def main(action):
             register_user()
         detail = "Virtual printer setup was unavailable. PDF handoff mode is ready; open Voucher Reorder from Start."
         (root / "mode-status.txt").write_text(detail, encoding="utf-8")
-        if action == "setup":
+        if action == "setup" or ui:
             print(detail)
         else:
             message(detail)
@@ -72,4 +73,4 @@ def main(action):
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1] if len(sys.argv) > 1 else "auto"))
+    raise SystemExit(main(sys.argv[1] if len(sys.argv) > 1 else "auto", ui="--ui" in sys.argv[2:]))

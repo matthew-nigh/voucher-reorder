@@ -143,8 +143,9 @@ def test_stale_heartbeat_does_not_block_shutdown(tmp_path):
     assert not (tmp_path / "worker.json").exists()
 
 
+@pytest.mark.parametrize("ui", [False, True])
 @pytest.mark.parametrize("exit_code,mode", [(0, "virtual"), (10, "pdf"), (1, "pdf")])
-def test_optional_elevation_success_decline_and_failure(tmp_path, monkeypatch, exit_code, mode):
+def test_optional_elevation_success_decline_and_failure(tmp_path, monkeypatch, exit_code, mode, ui):
     source = Path(__file__).parents[1] / "packaging/mode_setup.py"
     spec = importlib.util.spec_from_file_location("test_mode_setup", source)
     module = importlib.util.module_from_spec(spec)
@@ -154,10 +155,21 @@ def test_optional_elevation_success_decline_and_failure(tmp_path, monkeypatch, e
     monkeypatch.setattr(module, "stop_worker", lambda *args: None)
     monkeypatch.setattr(module, "powershell", lambda *args: ["fake-command"])
     monkeypatch.setattr(module, "register_user", lambda: None)
-    monkeypatch.setattr(module, "message", lambda text: None)
+    messages = []
+    monkeypatch.setattr(module, "message", messages.append)
     monkeypatch.setattr(module.subprocess, "CREATE_NO_WINDOW", 0, raising=False)
-    monkeypatch.setattr(module.subprocess, "run", lambda *args, **kw: SimpleNamespace(returncode=exit_code))
-    assert module.main("auto") == 0
+    calls = []
+
+    def run(*args, **kwargs):
+        calls.append(args)
+        return SimpleNamespace(returncode=exit_code)
+
+    monkeypatch.setattr(module.subprocess, "run", run)
+    assert module.main("auto", ui=ui) == 0
+    assert len(calls) == 1  # Exactly one elevation-helper invocation.
+    assert len(messages) == (0 if ui else 1)
+    detail = (tmp_path / "mode-status.txt").read_text()
+    assert ("declined or failed" in detail) == (exit_code != 0)
     saved = load(tmp_path / "settings.json")
     assert saved.mode == mode
     assert saved.printer == config().printer
