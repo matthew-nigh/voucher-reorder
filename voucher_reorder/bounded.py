@@ -1,6 +1,7 @@
 """Resource-limited document worker. Children inherit the Windows Job or POSIX process group."""
 
 import ctypes
+import io
 import json
 import os
 import signal
@@ -22,6 +23,15 @@ ERRORS = {
     4: "Flatten optional-content layers before sending a PDF print job.",
     5: "PDF processing failed or exceeded the document limits.",
 }
+
+
+class LimitedOutput(io.BufferedWriter):
+    """Check every write before extending an intermediate PDF on disk."""
+
+    def write(self, data):
+        if self.tell() + len(data) > MAX_OUTPUT:
+            raise ValueError("Expanded PDF exceeds processing limit.")
+        return super().write(data)
 
 
 def constrain():

@@ -54,8 +54,9 @@ public static class CheckedPrint {
         try {
             Check(StartPage(dc));
             IntPtr start=buffer.AddrOfPinnedObject();
-            Check(StretchDIBits(dc,-GetDeviceCaps(dc,112),-GetDeviceCaps(dc,113),dw,dh,0,0,w,h,
+            int lines=Check(StretchDIBits(dc,-GetDeviceCaps(dc,112),-GetDeviceCaps(dc,113),dw,dh,0,0,w,h,
                                 IntPtr.Add(start,offset),IntPtr.Add(start,14),0,0x00CC0020));
+            if (lines!=h) throw new IOException("Printer reported a partial page transfer.");
             Check(EndPage(dc));
         } finally { buffer.Free(); }
     }

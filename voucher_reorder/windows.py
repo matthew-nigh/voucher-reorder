@@ -1,6 +1,7 @@
 """Windows process boundaries. No shell interpolation of printer names or print data."""
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -21,26 +22,46 @@ def run(args, timeout=120):
 
 def convert(source, output):
     gs = ROOT / "vendor/ghostscript/bin/gswin64c.exe" if os.name == "nt" else "gs"
-    run(
-        [
-            gs,
-            "-dSAFER",
-            "-dBATCH",
-            "-dNOPAUSE",
-            "-dNOPROMPT",
-            "-sDEVICE=pdfwrite",
-            "-dCompatibilityLevel=1.7",
-            "-dAutoRotatePages=/None",
-            "-dEmbedAllFonts=true",
-            "-dSubsetFonts=true",
-            "-dDownsampleColorImages=false",
-            "-dDownsampleGrayImages=false",
-            "-dDownsampleMonoImages=false",
-            f"-sOutputFile={output}",
-            "-f",
-            source,
-        ]
-    )
+    from .bounded import LimitedOutput
+
+    args = [
+        gs,
+        "-q",
+        "-sstdout=%stderr",
+        "-dSAFER",
+        "-dBATCH",
+        "-dNOPAUSE",
+        "-dNOPROMPT",
+        "-sDEVICE=pdfwrite",
+        "-dCompatibilityLevel=1.7",
+        "-dAutoRotatePages=/None",
+        "-dEmbedAllFonts=true",
+        "-dSubsetFonts=true",
+        "-dDownsampleColorImages=false",
+        "-dDownsampleGrayImages=false",
+        "-dDownsampleMonoImages=false",
+        "-sOutputFile=%stdout",
+        "-f",
+        source,
+    ]
+    # The supervising worker enforces the deadline for the entire process tree.
+    with (
+        LimitedOutput(open(output, "wb", buffering=0)) as out,
+        subprocess.Popen(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        ) as process,
+    ):
+        try:
+            shutil.copyfileobj(process.stdout, out, length=65536)
+            if process.wait():
+                raise ValueError("PostScript conversion failed.")
+        finally:
+            if process.poll() is None:
+                process.kill()
 
 
 def forward(pdf, settings, appdata):

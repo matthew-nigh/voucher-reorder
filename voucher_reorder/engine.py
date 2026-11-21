@@ -12,7 +12,7 @@ from pypdf.generic import (
     NameObject,
 )
 
-from .bounded import MAX_OUTPUT, MAX_PAGES
+from .bounded import MAX_OUTPUT, MAX_PAGES, LimitedOutput
 from .config import Settings
 
 
@@ -91,5 +91,5 @@ def reorder(source, destination: str | Path, settings: Settings) -> None:
         }
     )
     writer.add_metadata({"/Producer": "Voucher Reorder", "/Title": "Voucher print job"})
-    with open(destination, "wb") as output:
+    with LimitedOutput(open(destination, "wb", buffering=0)) as output:
         writer.write(output)

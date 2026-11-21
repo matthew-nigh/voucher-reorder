@@ -6,7 +6,7 @@ and recommendations below the table describe the reviewed version.
 
 The updated suite passed on Linux with Python 3.12: **82 passed** (71 original,
 10 promoted security regressions and one new page-budget/queue-progress test).
-Ruff lint and formatting passed. Native spooler, UAC, GDI and physical-printer
+Ruff lint and formatting passed. Both pypdf artifact hashes matched. The x64 provisioning launcher cross-compiled, and NSIS 3.11 compiled both installer scripts with a staging fixture. Native spooler, UAC, GDI and physical-printer
 acceptance on Windows 10/11 remain outstanding.
 
 ## Original scope and evidence
@@ -49,7 +49,7 @@ modify installed applications or bind the real LPR port.
 
 | Finding | Severity | Status | Change and remaining validation |
 | --- | --- | --- | --- |
-| SR-01 | High | Mitigated | pypdf 7.1.1 with matching wheel/source hashes. Separate processes bound time, memory and page count. Output sizes are checked. Windows native conversion can overshoot the file-size threshold between polls. |
+| SR-01 | High | Mitigated | pypdf 7.1.1 with matching wheel/source hashes. Separate processes bound time, memory and page count. PDF output writes are capped before extending files. Windows process-tree limits await native validation. |
 | SR-02 | High | Mitigated | Owner-restricted, unshared Windows spool queue retains RAW jobs on a local NUL: port. Legacy LPR queues require migration. Two-account access and offline handoff need native validation. |
 | SR-03 | High | Mitigated | Separate admin package installs a native allowlisted launcher and scripts in Program Files. Runtime staging and execution use the protected directory. Alternate-credential UAC and installer provenance require native acceptance and trusted distribution. |
 | SR-04 | Medium | Fixed | A rejected file signature suppresses repeated parsing. An Inbox error allows other files and queued jobs to proceed. |

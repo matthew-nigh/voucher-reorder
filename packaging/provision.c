@@ -1,5 +1,7 @@
 /* Native entry point installed and run only from the protected machine package. */
+#ifndef UNICODE
 #define UNICODE
+#endif
 #define _UNICODE
 #include <windows.h>
 #include <shlobj.h>

@@ -52,9 +52,15 @@ try {
             $stream = [IO.WindowsRuntimeStreamExtensions]::AsStreamForRead($memory)
             $bitmap = [Drawing.Bitmap]::new($stream)
             try {
-                $area = [Drawing.Rectangle]::new(0,0,$bitmap.Width,$bitmap.Height)
-                $rgb = $bitmap.Clone($area,[Drawing.Imaging.PixelFormat]::Format24bppRgb)
-                try { $rgb.Save($image,[Drawing.Imaging.ImageFormat]::Bmp) } finally { $rgb.Dispose() }
+                $rgb = [Drawing.Bitmap]::new($bitmap.Width,$bitmap.Height,[Drawing.Imaging.PixelFormat]::Format24bppRgb)
+                try {
+                    $graphics = [Drawing.Graphics]::FromImage($rgb)
+                    try {
+                        $graphics.Clear([Drawing.Color]::White)
+                        $graphics.DrawImageUnscaled($bitmap,0,0)
+                    } finally { $graphics.Dispose() }
+                    $rgb.Save($image,[Drawing.Imaging.ImageFormat]::Bmp)
+                } finally { $rgb.Dispose() }
             } finally { $bitmap.Dispose(); $stream.Dispose() }
         } finally { $sheet.Dispose(); $memory.Dispose() }
         [CheckedPrint]::Page($dc,$image,$page.PaperSize.Width,$page.PaperSize.Height)

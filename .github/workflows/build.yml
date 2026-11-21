@@ -60,6 +60,10 @@ jobs:
         run: |
           & build/windows/runtime/python.exe scripts/smoke_packaged.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Print a synthetic batch to a Windows file port
+        shell: powershell
+        timeout-minutes: 4
+        run: scripts/test_print_pages.ps1
       - name: Exercise optional virtual printer setup logic
         timeout-minutes: 2
         shell: powershell

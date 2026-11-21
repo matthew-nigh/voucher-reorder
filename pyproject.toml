@@ -19,6 +19,7 @@ voucher-reorder = "voucher_reorder.app:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 110
