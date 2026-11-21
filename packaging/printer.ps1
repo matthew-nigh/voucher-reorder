@@ -38,11 +38,14 @@ try {
     $acl = "O:BAG:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;SWRC;;;$TargetSid)(A;OIIO;GA;;;$TargetSid)"
     if (-not $printer) {
         Add-Printer -Name $name -PortName $port -DriverName $driver -Comment $owner -PermissionSDDL $acl -KeepPrintedJobs -Datatype RAW
+        $madePrinter = $true
     } else {
         Set-Printer -Name $name -PermissionSDDL $acl -KeepPrintedJobs $true -Shared $false -Datatype RAW
     }
+    & (Join-Path $PSScriptRoot "raw_spool.ps1")
     Set-PrintConfiguration -PrinterName $name -PaperSize Letter -DuplexingMode OneSided
 } catch {
+    if ($madePrinter) { Remove-Printer -Name $name -ErrorAction SilentlyContinue }
     Write-Error $_ -ErrorAction Continue
     exit 1
 }

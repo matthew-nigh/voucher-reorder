@@ -88,6 +88,10 @@ class Queue:
                         atomic_json(job, state)
                         self.reconcile(job, state)
                     return False
+            if source:
+                receipts = self.root.parent / "inbox-receipts.json"
+                if receipts.exists() and json.loads(receipts.read_text()).get(source[0]) == source[1]:
+                    return False
             if sum(self.read(j)["state"] in ("queued", "held") for j in self.jobs()) >= 100:
                 raise ValueError("The waiting queue is full. Open Job status.")
             total = sum(p.stat().st_size for p in self.root.glob("*/input.*"))

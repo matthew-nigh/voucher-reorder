@@ -13,6 +13,7 @@ if ($Tray) { $page.PaperSource = @($p.PaperSources | Where-Object RawKind -eq $T
 $mode = $p.GetHdevmode($page)
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
 $null = [Windows.Storage.StorageFile,Windows.Storage,ContentType=WindowsRuntime]
+$null = [Windows.Graphics.Imaging.BitmapEncoder,Windows.Graphics.Imaging,ContentType=WindowsRuntime]
 $null = [Windows.Data.Pdf.PdfDocument,Windows.Data.Pdf,ContentType=WindowsRuntime]
 $null = [Windows.Data.Pdf.PdfPageRenderOptions,Windows.Data.Pdf,ContentType=WindowsRuntime]
 $null = [Windows.Storage.Streams.InMemoryRandomAccessStream,Windows.Storage.Streams,ContentType=WindowsRuntime]
@@ -42,6 +43,7 @@ try {
             $options = [Windows.Data.Pdf.PdfPageRenderOptions]::new()
             $options.DestinationWidth = [Math]::Round($sheet.Size.Width * 600 / 96)
             $options.DestinationHeight = [Math]::Round($sheet.Size.Height * 600 / 96)
+            $options.BitmapEncoderId = [Windows.Graphics.Imaging.BitmapEncoder]::PngEncoderId
             $options.IsIgnoringHighContrast = $true
             if ([long]$options.DestinationWidth * $options.DestinationHeight * 4 -gt 256MB) { throw 'Rendered page exceeds limit.' }
             $render = $sheet.RenderToStreamAsync($memory,$options)
