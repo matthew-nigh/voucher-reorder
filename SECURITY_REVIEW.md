@@ -1,15 +1,15 @@
 # Independent security and quality review
 
-Reviewed 2026-11-20 against `codex/initial-build` at
-`efec173` (Voucher Reorder 0.2.0). This review adds documentation and synthetic
-regression tests only; **none of the findings below is fixed by this PR**.
+The original review covered `codex/initial-build` at `efec173`. The status table
+records the remediation on `codex/security-fixes`. The evidence, reproductions
+and recommendations below the table describe the reviewed version.
 
-**Recommendation:** address SR-01 before processing untrusted PDFs, and SR-02/SR-03
-before treating virtual mode as safe on a machine with mutually untrusted users.
-Resolve the print-integrity findings before relying on unattended check printing.
-No Critical finding or consent-free administrator compromise was demonstrated.
+The updated suite passed on Linux with Python 3.12: **82 passed** (71 original,
+10 promoted security regressions and one new page-budget/queue-progress test).
+Ruff lint and formatting passed. Native spooler, UAC, GDI and physical-printer
+acceptance on Windows 10/11 remain outstanding.
 
-## Scope and evidence
+## Original scope and evidence
 
 Inspected all application modules, packaging scripts, installer/uninstaller,
 dependency manifest, CI workflow, existing tests and operational documentation.
@@ -47,19 +47,21 @@ modify installed applications or bind the real LPR port.
 
 ## Ranked findings
 
-| ID | Severity | Finding | Evidence |
+| Finding | Severity | Status | Change and remaining validation |
 | --- | --- | --- | --- |
-| SR-01 | High | Known vulnerable PDF parser runs without processing budgets | 144-byte input hangs; bounded regression |
-| SR-02 | High | Machine loopback LPR permits cross-user injection and listener impersonation | Protocol/socket test and source; two-user Windows validation outstanding |
-| SR-03 | High | UAC executes a script writable by the requesting unprivileged user | Source-confirmed trust boundary; requires administrator approval |
-| SR-04 | Medium | One malformed Inbox PDF prevents all normal worker processing | Regression |
-| SR-05 | Medium | Receipt write failure can cause an old PDF to print again | Two regressions |
-| SR-06 | Medium | Reordering changes optional-content visibility | Raster comparison regression |
-| SR-07 | Medium | Installer cleanup can delete another in-progress deployment | Regression; native concurrent install validation outstanding |
-| SR-09 | Medium | Slow LPR client can indefinitely occupy receipt and block shutdown | Source-confirmed timeout semantics |
-| SR-10 | Medium | Bundled renderer can report success after dropping a page | Pinned upstream source; native fault injection outstanding |
-| SR-08 | Low | Terminal-state payload deletion is not recovered after a crash | Four state-specific regressions |
-| SR-11 | Low | Build/release trust includes mutable Actions and unlocked tooling | Workflow/build inspection |
+| SR-01 | High | Mitigated | pypdf 7.1.1 with matching wheel/source hashes. Separate processes bound time, memory and page count. Output sizes are checked. Windows native conversion can overshoot the file-size threshold between polls. |
+| SR-02 | High | Mitigated | Owner-restricted, unshared Windows spool queue retains RAW jobs on a local NUL: port. Legacy LPR queues require migration. Two-account access and offline handoff need native validation. |
+| SR-03 | High | Mitigated | Separate admin package installs a native allowlisted launcher and scripts in Program Files. Runtime staging and execution use the protected directory. Alternate-credential UAC and installer provenance require native acceptance and trusted distribution. |
+| SR-04 | Medium | Fixed | A rejected file signature suppresses repeated parsing. An Inbox error allows other files and queued jobs to proceed. |
+| SR-05 | Medium | Fixed | Admission journals the pending source receipt in durable job state. Receipt reconciliation precedes printing and expiry. |
+| SR-06 | Medium | Fixed | Layered PDFs with optional-content catalog configuration are rejected with a flattening instruction. |
+| SR-07 | Medium | Mitigated | Install and uninstall share an exclusive per-user handle before extraction. Cleanup targets retired activations. Uninstaller publication is staged. Native concurrent and disk-full tests remain pending. |
+| SR-09 | Medium | Mitigated | Removed the production LPR server. Bounded, cancellable spool reads quarantine interrupted jobs. Private admission reserves disk space and caps aggregate input. Windows controls its own spool storage. |
+| SR-10 | Medium | Mitigated | Replaced Sumatra with Windows PDF rendering and checked GDI calls per page and document. Uncertain attempts enter review. Native failure injection, printer compatibility and MICR checks remain pending. |
+| SR-08 | Low | Fixed | Startup and periodic cleanup retry terminal payload deletion while preserving delivery state. |
+| SR-11 | Low | Mitigated | Actions use full SHAs, Python tooling has a hashed lock, and builds record native tool versions. Release reviewers, signing and hosted toolchain trust remain external controls. |
+
+## Original findings and recommendations
 
 ### SR-01 — High: known vulnerable parser, no time/memory/page budget
 

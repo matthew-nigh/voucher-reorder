@@ -4,6 +4,10 @@ Use Windows 10 x64 and Windows 11 x64, QuickBooks Desktop, and the intended phys
 printer. CI covers synthetic tests, not this hardware acceptance. Keep live financial
 data local; use fake transactions except for the explicit private overlay test.
 
+Force a page-render or GDI page failure partway through a synthetic batch. Verify
+that the job enters review, no later pages print, and restart never resubmits it.
+Exercise memory/time limits and check that the next ordinary job completes.
+
 ## Record
 
 - [ ] Windows edition/build, x64, security/Protected Print Mode or organizational policy.
@@ -14,7 +18,7 @@ data local; use fake transactions except for the explicit private overlay test.
 
 ## No-admin path (must pass independently)
 
-1. [ ] Sign in as a standard user, run setup normally and decline/cancel optional UAC.
+1. [ ] Sign in as a standard user, run the per-user setup normally.
        Installation completes in LocalAppData. Settings clearly says **PDF handoff**.
        No Program Files/HKLM app installation, service, driver or printer port is added.
 2. [ ] Reopen from Start and sign out/in. Background app starts unelevated with no UAC.
@@ -42,17 +46,19 @@ data local; use fake transactions except for the explicit private overlay test.
 
 ## Optional virtual path (must pass before promoting it)
 
-9. [ ] Click Enable virtual printer; approve UAC. Also test a standard desktop user with
+9. [ ] Install the verified provisioning package from an admin-controlled directory. Click Enable virtual printer; approve UAC. Also test a standard desktop user with
        different administrator credentials. Queue access must go to the original user.
        The app remains in LocalAppData and its worker remains unelevated.
 10. [ ] Verify queue **Voucher Reorder**, Microsoft **MS Publisher Imagesetter** driver,
-        Letter default/simplex, LPR port `VoucherReorder_LPR`, host `127.0.0.1`, queue
-        `voucher`, byte counting enabled. No inbound firewall rule or custom driver.
+        Letter default/simplex, local NUL: port, unshared queue, RAW spooling and retained jobs.
+        Stop the worker and submit a synthetic voucher. From another standard account
+        verify that submitting, reading and deleting jobs are denied. Restart as owner:
+        verify one durable admission, removal from the Windows queue and a single output.
         Windows default printer stays unchanged. Settings shows Virtual printer mode.
 11. [ ] Print a fake QuickBooks voucher to Voucher Reorder, portrait/matching paper/one
         copy. No PDF Save/script/viewer UI should appear. Verify physical placement.
 12. [ ] On separate snapshots, test UAC decline, unavailable credentials, missing inbox
-        driver, printer policy, port 515 conflict and missing C++ runtime/offline setup.
+        driver, printer policy, legacy queue migration and missing C++ runtime/offline setup.
         Failure must leave a working PDF mode without modifying unrelated queues.
 13. [ ] Switch back to PDF mode; approve removal, then repeat with removal declined.
         On decline, PDF mode still works and the remaining virtual queue is documented

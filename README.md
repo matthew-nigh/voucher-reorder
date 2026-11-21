@@ -15,8 +15,8 @@ future tagged Release). Run it normally. Python and PDF tools are included.
 
 | Mode | What you do in QuickBooks | Administrator needed? |
 | --- | --- | --- |
-| **Virtual printer — setup's preferred option** | Print to **Voucher Reorder**; the app reorders and forwards automatically. No PDF Save dialog. | Only to install/remove the optional Windows printer and its prerequisite. Setup requests UAC; a different administrator can provide credentials for the signed-in user. |
-| **PDF handoff — automatic fallback** | Print to an **already available** Microsoft Print to PDF, then save in the Inbox shown in the app. Alternatively save/export a PDF elsewhere and click **Print a PDF**. | **No** admin access to install, upgrade, run or remove the per-user app. |
+| **Virtual printer — optional** | Print to **Voucher Reorder**; the app reorders and forwards automatically. No PDF Save dialog. | Only to install/remove the optional Windows printer and its prerequisite. An administrator first installs the separate provisioning package; Settings requests UAC and a different administrator can provide credentials for the signed-in user. |
+| **PDF handoff — default** | Print to an **already available** Microsoft Print to PDF, then save in the Inbox shown in the app. Alternatively save/export a PDF elsewhere and click **Print a PDF**. | **No** admin access to install, upgrade, run or remove the per-user app. |
 
 Declining UAC, lacking credentials, a blocked driver, or a failed optional setup
 leaves a working PDF-mode app. Settings clearly shows the active mode and has
@@ -100,28 +100,37 @@ in-place upgrades in either mode; this pre-public migration needs supervised cle
 
 ```text
 PDF mode:     existing PDF output -> dedicated Inbox / Print a PDF
-Virtual mode: QuickBooks -> inbox Microsoft PostScript driver -> loopback LPR -> Ghostscript PDF
-Both:         private per-user queue -> vector pypdf reorder -> SumatraPDF -> real printer
+Virtual mode: QuickBooks -> inbox Microsoft PostScript driver -> owner-restricted Windows spool queue -> Ghostscript PDF
+Both:         private per-user queue -> vector pypdf reorder -> Windows PDF renderer -> checked GDI pages -> real printer
 ```
 
 Python's official embeddable runtime and pure-Python pypdf make the core testable
-on Linux. The native UI uses Windows PowerShell/WinForms. NSIS builds one installer
-on Linux or Windows; no separately installed Python, service or new custom driver
-is required. The virtual path reuses Microsoft's signed **MS Publisher Imagesetter**
-and Standard TCP/IP LPR monitor with byte counting. It is available only if Windows
-policy permits that driver. No security restrictions are disabled.
+on Linux. The native UI uses Windows PowerShell/WinForms. The per-user installer starts in PDF mode. For virtual mode, an administrator must
+obtain the matching `VoucherReorder-Provisioning.exe` independently, verify it
+against the trusted release, and install it from administrator-controlled storage.
+Then select **Enable virtual printer**. The protected helper configures one
+unshared Windows printer using the Microsoft MS Publisher Imagesetter driver,
+the local NUL: port, and retained RAW jobs. The signed-in owner consumes those
+jobs through Windows spooler RPC. When the worker is offline, jobs stay in the
+restricted Windows queue. If a job enters spool review, reconcile paper and both
+queues, cancel the retained job, and submit a fresh export if still needed.
 
-The background app runs as the signed-in user via HKCU startup, never as SYSTEM.
-PDF mode has no listening network port. Virtual mode binds only to `127.0.0.1:515`
-and grants the original user queue access; that global virtual queue supports one
-user per workstation. LPR itself is unauthenticated: other local processes could
-submit to the port. PDF mode supports separate Windows users and avoids that port.
+**Upgrading from LPR:** stop submitting checks and reconcile outstanding jobs
+before changing the old queue. Use the protected provisioning helper to migrate
+the owner's empty queue, or have an administrator remove that legacy printer
+before upgrading the per-user app. Keep the old receiver running until the old
+queue has been migrated or removed.
+
+Processing allows 250 pages, 120 seconds per processing phase, 768 MiB of worker
+memory, and 256 MiB of expanded page content. Flatten optional-content layers in
+the source application before exporting. The final print uses lossless 600 dpi
+rasters. Recheck physical alignment and MICR on plain paper after upgrading.
 
 PDF Inbox ingestion waits for stable size/time, a complete parseable PDF and an
 exclusive Windows read handle. Source PDFs are **not deleted or moved**. Persistent
 receipts prevent old Inbox files from printing again after restart/queue expiry.
 Use new filenames for new jobs; leave unrelated files outside this dedicated folder.
-Copies in the private queue are capped at 100 MiB/job and 100 waiting jobs. They are
+Copies in the private queue are capped at 100 MiB/job and 100 waiting jobs, with a 512 MiB aggregate input limit. They are
 removed after sending, failure or review; waiting copies/status expire after 24
 hours while the app runs or at next start. Inbox originals remain until you delete
 them. Deletion is not secure erasure; Windows spooling and backups are separate.
@@ -169,6 +178,6 @@ retain their licenses: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Always 
 the matching source archive alongside the installer.
 
 Sources: [Microsoft driver installation permissions](https://learn.microsoft.com/en-us/windows-hardware/drivers/print/point-and-print-with-packages),
-[Windows LPR port options](https://learn.microsoft.com/en-us/powershell/module/printmanagement/add-printerport),
-[Sumatra printing options](https://www.sumatrapdfreader.org/docs/Command-line-arguments),
+[Windows spool job reads](https://learn.microsoft.com/en-us/windows/win32/printdocs/readprinter),
+[Windows PDF renderer](https://learn.microsoft.com/uwp/api/windows.data.pdf),
 [Ghostscript vector output](https://ghostscript.readthedocs.io/en/latest/VectorDevices.html).

@@ -4,9 +4,10 @@
 
 1. **Install or upgrade.** Run `VoucherReorder-0.2.0-Setup.exe` normally. If SmartScreen
    appears, confirm the download came from this project, then choose **More info →
-   Run anyway**. Setup asks permission to add the virtual printer. Approve UAC (an
-   administrator can enter credentials), or decline to use the app without admin.
-   Either way, the app installs for your Windows account. For updates, run the newer
+   Run anyway**. Setup starts in PDF mode for your Windows account. For virtual mode,
+   ask an administrator to install the matching protected provisioning package,
+   then click **Enable virtual printer**. Before upgrading a legacy LPR printer,
+   reconcile pending jobs and have its administrator migrate or remove the old queue. For updates, run the newer
    installer without uninstalling first. Your settings stay saved.
 2. **Choose the real printer.** Open Voucher Reorder from Start. Its top line shows
    **Virtual printer** or **PDF handoff** mode. Select your real printer, matching
@@ -36,6 +37,8 @@
 Waiting jobs are held. Check **Job status**, load the right paper, then choose
 **Resume held jobs**. A failed/interrupted job is never automatically reprinted.
 If setup is interrupted, run the installer again; do not install an older version.
+
+Flatten layers before export and split batches larger than 250 pages.
 
 **If nothing prints:** check Job status, the real Windows printer queue, and paper
 already printed. “Sent” can still mean waiting in Windows. Do not simply print again.

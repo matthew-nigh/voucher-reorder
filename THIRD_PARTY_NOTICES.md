@@ -13,7 +13,6 @@ Dependency versions, URLs and SHA-256 checksums are in
 | CPython embeddable x64 | 3.13.12 | PSF-2.0 and historical Python notices; interpreter and standard library |
 | pypdf | 7.1.1 | BSD-3-Clause; PDF object/resource manipulation |
 | Ghostscript | 10.08.0 | AGPL-3.0-or-later; separate, unmodified PostScript-to-PDF executable |
-| SumatraPDF | 3.6.1 | GPLv3 application, including AGPLv3 MuPDF components; separate, unmodified PDF print executable |
 | NSIS installer stubs/plugins | 3.11 or newer | zlib/libpng license; installer only. NSIS build-tool components have additional terms in `NSIS-COPYING.txt` |
 
 GPLv3 and AGPLv3 have explicit section-13 interoperability; **AGPL-covered parts
@@ -37,17 +36,6 @@ Relevant transitive components include:
 - Ghostscript: bundled FreeType (FreeType license alternative), font resources,
   libjpeg (IJG), libpng (libpng), zlib, OpenJPEG (BSD), Little CMS (MIT), jbig2dec
   (AGPL), expat (MIT), and related upstream notices retained in its source archive.
-- SumatraPDF: MuPDF (AGPL), DjVuLibre (GPLv2-or-later), CHMLib (LGPL), unarr (LGPLv3),
-  HarfBuzz (MIT), FreeType (FreeType license alternative), libjpeg/libpng/zlib,
-  OpenJPEG (BSD), Little CMS (MIT), libwebp (BSD), Brotli (MIT), dav1d (BSD),
-  gumbo-parser (Apache-2.0), mujs (ISC), and font/data notices. Use the complete
-  upstream notices for the exact per-file terms and copyright holders.
-
-The GPLv2-or-later components permit GPLv3 compatibility; the permissive and LGPL
-components permit use with GPLv3 subject to preserving their terms. The full
-Sumatra source tree includes its vendored dependencies and build scripts. No
-GPLv2-only component is deliberately added by Voucher Reorder.
-
 ## Microsoft platform dependencies (not open-source application components)
 
 Windows, PowerShell/WinForms, the Microsoft PostScript driver and the print spooler
@@ -63,8 +51,7 @@ Authenticode signature, and installs it as a shared system prerequisite. Microso
 terms apply to that prerequisite; it is not relicensed by this project. See
 [Microsoft's redistribution documentation](https://learn.microsoft.com/en-us/cpp/windows/redistributing-visual-cpp-files).
 The shared runtime and OS driver are left installed on uninstall. PDF handoff never
-invokes Ghostscript or installs this prerequisite; it uses the packaged Python and
-Sumatra runtimes directly.
+invokes Ghostscript or installs this prerequisite; it uses the packaged Python runtime and the Windows PDF renderer.
 
 ## Source availability and reproducing modifications
 
@@ -73,8 +60,7 @@ Release: `VoucherReorder-0.2.0-Setup.exe`, `VoucherReorder-0.2.0-sources.zip`, a
 `SHA256SUMS.txt`. **Do not distribute only the executable and rely on an upstream
 URL as the corresponding-source offer.** Our workflow uploads/releases all three.
 The source ZIP includes this application's build/install scripts, tests, license,
-metadata and documents, plus the exact original CPython, pypdf, Ghostscript and
-SumatraPDF source archives. `BUILD_INFO.json` records upstream hashes and revision.
+metadata and documents, plus the exact original CPython, pypdf and Ghostscript source archives. `BUILD_INFO.json` records upstream hashes and revision.
 
 The distributed Python code is already its preferred source form. To replace a
 component, unpack its source archive, follow its included build instructions, then
@@ -82,7 +68,6 @@ substitute its build products in the staging directory before compiling NSIS:
 
 - CPython: source `PCbuild/readme.txt` (Windows build) and LICENSE.
 - Ghostscript: source `doc/src/Make.rst` and Windows makefiles under `psi/`.
-- SumatraPDF: source `docs/` build instructions and `vs/` solution/build files.
 - pypdf: source `pyproject.toml`; pure Python with no compiled engine.
 
 No upstream code is patched by the packaging process. Reproducing an identical
