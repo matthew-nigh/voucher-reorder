@@ -121,12 +121,10 @@ def main():
     )
     if not (gs / "bin/gswin64c.exe").exists():
         raise RuntimeError("Ghostscript extraction failed")
-    zip_extract(files["sumatra-runtime"], vendor / "sumatra")
-    (vendor / "sumatra/SumatraPDF-3.6.1-64.exe").rename(vendor / "sumatra/SumatraPDF.exe")
     notices = stage / "licenses"
     notices.mkdir()
     shutil.copy2(stage / "runtime/LICENSE.txt", notices / "Python-LICENSE.txt")
-    for key in ("python-source", "pypdf-source", "ghostscript-source", "sumatra-source"):
+    for key in ("python-source", "pypdf-source", "ghostscript-source"):
         collect_notices(files[key], notices / key)
     # NSIS executable stubs/plugins use the zlib/libpng license. Full tool distribution
     # also includes build-time components; preserve its upstream license document.

@@ -28,15 +28,5 @@
     "filename": "ghostscript-10.08.0.tar.xz",
     "url": "https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10080/ghostscript-10.08.0.tar.xz",
     "sha256": "c20492bc8ebb96c87fa2e52a0926e1cda8cde95d66145e018ac713fed5da38cf"
-  },
-  "sumatra-runtime": {
-    "filename": "SumatraPDF-3.6.1-64.zip",
-    "url": "https://www.sumatrapdfreader.org/dl/rel/3.6.1/SumatraPDF-3.6.1-64.zip",
-    "sha256": "98b33a518d42986856d225064b0cd2d3643ecf78cbf84ab873d26cc51877a544"
-  },
-  "sumatra-source": {
-    "filename": "sumatrapdf-3.6.1-source.tar.gz",
-    "url": "https://codeload.github.com/sumatrapdfreader/sumatrapdf/tar.gz/refs/tags/3.6.1rel",
-    "sha256": "1dd2d727f7591d6eb34a2d99787fbcc9125062583128b1340b300fbea5b3cb24"
   }
 }

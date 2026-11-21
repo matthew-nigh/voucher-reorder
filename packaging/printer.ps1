@@ -17,6 +17,20 @@ try {
         $printer = $null
     }
     if ($Action -eq 'remove') { exit 0 }
+    $runtime = Join-Path ([Environment]::SystemDirectory) 'msvcp140.dll'
+    if (-not (Test-Path $runtime) -or (Get-Item $runtime).VersionInfo.FileVersionRaw -lt [version]'14.38.0.0') {
+        # PSScriptRoot is the administrator-installed directory. Keep download, verification
+        # and execution there even when UAC uses the desktop user's administrator token.
+        $redist = Join-Path $PSScriptRoot ([Guid]::NewGuid().ToString('N') + '.exe')
+        try {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            Invoke-WebRequest 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $redist -UseBasicParsing
+            $signature = Get-AuthenticodeSignature -LiteralPath $redist
+            if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation(?:,|$)') { throw 'Invalid Microsoft runtime signature.' }
+            $process = Start-Process $redist -WorkingDirectory $PSScriptRoot -ArgumentList '/install /quiet /norestart' -Wait -PassThru
+            if ($process.ExitCode -notin @(0,1638,3010)) { throw 'Microsoft runtime installation failed.' }
+        } finally { Remove-Item -LiteralPath $redist -Force -ErrorAction SilentlyContinue }
+    }
     $existing = Get-PrinterPort -Name $port -ErrorAction SilentlyContinue
     if ($existing -and $existing.PortMonitor -ne 'Local Port') { throw 'Unexpected port monitor.' }
     if (-not $existing) { Add-PrinterPort -Name $port }
