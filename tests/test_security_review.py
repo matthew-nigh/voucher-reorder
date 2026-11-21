@@ -34,11 +34,6 @@ from voucher_reorder.queue import RETENTION, Queue
 SETTINGS = Settings(printer="FAKE SECURITY REVIEW PRINTER")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=subprocess.TimeoutExpired,
-    reason="SR-01: pinned parser loops on a truncated xref table",
-)
 def test_malformed_xref_finishes_in_bounded_time(tmp_path):
     # Adapted from the public upstream regression in py-pdf/pypdf PR #4170.
     # A subprocess timeout terminates the child; never hang the test runner.
@@ -142,9 +137,6 @@ def hidden_layer_pdf():
     return source.getvalue()
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="SR-06: optional-content visibility is lost during reorder"
-)
 def test_identity_reorder_preserves_hidden_layer_appearance(tmp_path):
     source = hidden_layer_pdf()
     with pymupdf.open(stream=source, filetype="pdf") as original:

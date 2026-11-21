@@ -4,11 +4,10 @@ import threading
 import time
 
 from .config import Settings, atomic_json, data_dir, load
-from .engine import reorder
+from .bounded import execute
 from .inbox import Inbox
 from .locking import FileLock
 from .lpr import Server
-from .printing import validate_pages
 from .queue import Queue
 from .windows import convert, forward, message
 
@@ -25,12 +24,14 @@ def process_one(queue, settings, converter=convert, sender=forward):
             config = Settings(**state["settings"]) if "settings" in state else settings
             try:
                 queue.update(job, "converting")
-                if state.get("kind", "ps") == "ps":
+                if state.get("kind", "ps") == "ps" and converter is not convert:
                     converter(job.parent / "input.ps", job.parent / "input.pdf")
-                reorder(job.parent / "input.pdf", job.parent / "output.pdf", config)
-                validate_pages(job.parent / "output.pdf", config)
+                execute("prepare", job.parent, config)
                 queue.update(job, "printing")
-                sender(job.parent / "output.pdf", config, queue.root.parent / "sumatra")
+                if sender is forward:
+                    execute("print", job.parent / "output.pdf", config)
+                else:
+                    sender(job.parent / "output.pdf", config, queue.root.parent / "sumatra")
                 queue.update(job, "sent", "Sent to Windows printer queue; verify physical output.")
             except Exception as error:
                 attempted = queue.read(job)["state"] == "printing"
@@ -39,7 +40,7 @@ def process_one(queue, settings, converter=convert, sender=forward):
                     str(error)
                     if type(error) is ValueError
                     and str(error).startswith(
-                        ("PDF page size", "Printer paper", "Set the printer", "The selected tray")
+                        ("Flatten optional", "PDF page size", "Printer paper", "Set the printer", "The selected tray")
                     )
                     else "Inspect the real printer queue and paper before reprinting."
                 )

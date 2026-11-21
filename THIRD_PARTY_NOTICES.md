@@ -11,7 +11,7 @@ Dependency versions, URLs and SHA-256 checksums are in
 | Component | Version | License / role |
 | --- | --- | --- |
 | CPython embeddable x64 | 3.13.12 | PSF-2.0 and historical Python notices; interpreter and standard library |
-| pypdf | 6.9.1 | BSD-3-Clause; PDF object/resource manipulation |
+| pypdf | 7.1.1 | BSD-3-Clause; PDF object/resource manipulation |
 | Ghostscript | 10.08.0 | AGPL-3.0-or-later; separate, unmodified PostScript-to-PDF executable |
 | SumatraPDF | 3.6.1 | GPLv3 application, including AGPLv3 MuPDF components; separate, unmodified PDF print executable |
 | NSIS installer stubs/plugins | 3.11 or newer | zlib/libpng license; installer only. NSIS build-tool components have additional terms in `NSIS-COPYING.txt` |

@@ -7,7 +7,7 @@ name = "voucher-reorder"
 version = "0.2.0"
 description = "Reorder voucher check sections for QuickBooks Desktop"
 requires-python = ">=3.11"
-dependencies = ["pypdf==6.9.1"]
+dependencies = ["pypdf==7.1.1"]
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 

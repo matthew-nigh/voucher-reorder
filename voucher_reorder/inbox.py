@@ -1,11 +1,12 @@
 """Receive closed PDFs without racing the PDF printer or modifying originals."""
 
-import io
+import tempfile
+from pathlib import Path
 import os
 import time
 from contextlib import contextmanager
 
-from pypdf import PdfReader
+from .bounded import execute
 
 from .config import atomic_json
 from .queue import MAX_JOB
@@ -46,9 +47,10 @@ def read_pdf(path):
             raise ValueError("PDF must be smaller than 100 MiB.")
         if not data.startswith(b"%PDF-") or b"%%EOF" not in data[-2048:]:
             raise ValueError("PDF is incomplete; wait for saving to finish.")
-        reader = PdfReader(io.BytesIO(data), strict=True)
-        if reader.is_encrypted or not reader.pages:
-            raise ValueError("PDF must be unencrypted and contain at least one page.")
+        with tempfile.TemporaryDirectory() as folder:
+            snapshot = Path(folder) / "input.pdf"
+            snapshot.write_bytes(data)
+            execute("inspect", snapshot)
         return data
 
 
