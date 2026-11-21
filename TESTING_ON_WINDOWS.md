@@ -16,6 +16,38 @@ Exercise memory/time limits and check that the next ordinary job completes.
 - [ ] Installer version/checksum, installed BUILD_INFO.json revision, standard/admin
       account used (report role, not username), and whether PDF output already exists.
 
+## v0.2.1 feedback regressions (include a PC with no physical printer)
+
+- [ ] At Windows scaling 100%, 150% and 200%, select Stub 1 / Check / Stub 2 output.
+      All three bands have readable labels, including the complete top Stub 1 band.
+      Resize to a small window; scroll to every setting and button. Switch tabs and
+      orders; no band overlaps a selector or another band. Repeat after reopening.
+- [ ] Both source and output selectors offer all six orders. Check each of the 36
+      mappings using fake alignment pages, equal thirds, unequal source heights
+      (e.g. 2.75 / 4.25 / 4 inches), and positive/negative X/Y nudges. Each named
+      section keeps its height and nudge; nothing bleeds into another slot.
+- [ ] The QuickBooks version and printer model fields are absent. Section-height
+      help explains blank defaults and distances from the source page's top.
+- [ ] Click Enable virtual printer: immediate progress text, moving indicator and
+      disabled mode buttons; the window can repaint, move and switch tabs throughout.
+      Exactly one UAC prompt. Test approval, decline and setup failure; each produces
+      a clear result and re-enables buttons. PDF handoff still works on failure.
+- [ ] With no physical printer, choose Save reordered PDF, Letter and a new output
+      folder. Save settings, run an alignment test, submit a fake PDF manually and
+      save a fresh fake QuickBooks PDF into the Inbox. Each produces a vector PDF
+      in that folder; Job status reports its path. Test consecutive ten-page jobs.
+- [ ] Select Microsoft Print to PDF, then Microsoft XPS Document Writer if present:
+      settings save successfully and use direct PDF output in the chosen folder.
+      Voucher Reorder as output is always refused. No second output Save dialog.
+- [ ] Reject an output folder equal to or below the Inbox (including a folder alias).
+      Copy generated output back into the Inbox, restart the app and verify no new
+      job/output is created. Existing source files are not reprocessed. Reject
+      scanned/image PDFs and blank pages; confirm saved test text remains searchable.
+- [ ] Upgrade an actual 0.2.0 installation with nondefault layout/nudges and held
+      jobs to 0.2.1 without uninstalling. Load/save Settings and resume a held fake
+      job: default source order and old output/nudges preserved; obsolete fields
+      disappear on save. No additional UAC for the per-user update.
+
 ## No-admin path (must pass independently)
 
 1. [ ] Sign in as a standard user, run the per-user setup normally.
@@ -28,7 +60,7 @@ Exercise memory/time limits and check that the next ordinary job completes.
        margins. Disconnect it, refresh and restore; errors must not silently select
        another printer or the Windows default printer.
 4. [ ] On plain paper, print alignment. Measure several ruler inches: no fit/shrink.
-       Test all six orders, positive/negative X/Y, equal thirds and measured unequal
+       Test all 36 source/output orders, positive/negative X/Y, equal thirds and measured unequal
        splits. Check that nudges cannot leak into neighboring sections.
 5. [ ] Test Letter, Legal/A4 or a driver-specific size actually supported by this printer.
        Match QuickBooks/PDF page size to paper. Deliberately mismatch them: no sheet
@@ -128,7 +160,13 @@ markers and no image XObjects. It measures Windows Job peaks below 256 MiB per j
 with less than 32 MiB variation, worker private memory variation below 16 MiB after
 garbage collection, payload/compiler-temp cleanup and empty waiting/spool queues. Vector preflight rejects raster
 fallback and blank pages before StartDoc; test unsupported real exports separately.
+CI exercises the native settings form with all 36 preview mappings, simulated
+100/150/200% scaling, normal/small windows, printer-free PDF saving and event-loop
+responsiveness during a simulated setup child. Actual Windows display scaling and
+interactive UAC still need the checks above. Linux tests cover all 36 vector PDF
+mappings with unequal heights/nudges, migration, file output and Inbox loop guards.
 CI also exercises the real provisioning package install/upgrade/uninstall and version
-mismatch rejection, followed by a real standard-user install/upgrade/repair/uninstall.
+mismatch rejection, followed by a real standard-user install/upgrade/repair/uninstall from the pinned
+v0.2.0 baseline to v0.2.1, including settings and held-job snapshot migration.
 Interactive UAC with alternate credentials and physical MICR remain manual acceptance.
 Inspect only the sanitized `print-error.log` when diagnosing code 6/7/8 failures.

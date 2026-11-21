@@ -26,7 +26,7 @@ The installer contains `licenses/`, populated from **all** upstream source files
 named license/licence/copying/copyright/notice, retaining their source-relative
 paths. `vendor/ghostscript/doc` retains upstream documentation. This preserves the
 actual notices rather than replacing them with this summary. The original source
-archives accompany every installer in `VoucherReorder-0.2.0-sources.zip`.
+archives accompany every installer in `VoucherReorder-0.2.1-sources.zip`.
 
 Relevant transitive components include:
 
@@ -57,7 +57,7 @@ invokes Ghostscript or installs this prerequisite; it uses the packaged Python r
 ## Source availability and reproducing modifications
 
 Always distribute these three files together, in the same downloadable artifact or
-Release: `VoucherReorder-0.2.0-Setup.exe`, `VoucherReorder-0.2.0-sources.zip`, and
+Release: `VoucherReorder-0.2.1-Setup.exe`, `VoucherReorder-0.2.1-sources.zip`, and
 `SHA256SUMS.txt`. **Do not distribute only the executable and rely on an upstream
 URL as the corresponding-source offer.** Our workflow uploads/releases all three.
 The source ZIP includes this application's build/install scripts, tests, license,

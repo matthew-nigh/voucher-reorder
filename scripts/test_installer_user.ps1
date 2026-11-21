@@ -43,6 +43,13 @@ try {
     if ([Convert]::ToBase64String($before) -ne [Convert]::ToBase64String($after)) { throw 'Settings changed during upgrade' }
     $state=Get-ChildItem (Join-Path $data 'jobs') -Filter state.json -Recurse | Select-Object -First 1 | Get-Content -Raw | ConvertFrom-Json
     if ($state.state -ne 'held') { throw 'Pending job was not held' }
+    # Load actual v0.2.0 settings and a queued snapshot using the upgraded runtime.
+    $newDir=Join-Path $root ('deployments\'+$current.directory)
+    $newPy=Join-Path $newDir 'runtime\python.exe'
+    & $newPy -c "from voucher_reorder.config import *; from dataclasses import asdict; s=load(data_dir()/'settings.json'); assert tuple(s.source_order)==(0,1,2); assert tuple(s.order)==(2,0,1); save(data_dir()/'settings.json',s); assert 'quickbooks_version' not in asdict(s) and 'printer_model' not in asdict(s)"
+    if ($LASTEXITCODE -ne 0) { throw 'v0.2.0 settings did not migrate' }
+    & $newPy -c "from voucher_reorder.config import *; from voucher_reorder.queue import Queue; from voucher_reorder.worker import process_one; q=Queue(data_dir()/'jobs'); job=q.jobs()[0]; q.update(job,'queued'); calls=[]; process_one(q,load(data_dir()/'settings.json'),sender=lambda p,s,a:calls.append(tuple(s.source_order))); assert calls==[(0,1,2)]; assert q.read(job)['state']=='sent'"
+    if ($LASTEXITCODE -ne 0) { throw 'v0.2.0 queued settings did not migrate' }
     Run-Setup $Installer 1 # real downgrade attempt must fail without changing active version
     $check=Get-Content (Join-Path $root 'current.json') -Raw | ConvertFrom-Json
     if ($check.version -ne $current.version) { throw 'Downgrade changed active install' }

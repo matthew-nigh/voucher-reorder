@@ -2,7 +2,7 @@ name: Test and build Windows installer
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, codex/windows-test-fixes]
     tags: ['v*']
   workflow_dispatch:
 
@@ -62,6 +62,10 @@ jobs:
         run: |
           & build/windows/runtime/python.exe scripts/smoke_packaged.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check settings preview, DPI scaling, PDF output and asynchronous setup
+        shell: powershell
+        timeout-minutes: 3
+        run: scripts/test_settings.ps1
       - name: Print a synthetic batch to a Windows file port
         shell: powershell
         timeout-minutes: 8
@@ -70,22 +74,25 @@ jobs:
         timeout-minutes: 2
         shell: powershell
         run: scripts/test_virtual_setup.ps1
-      - name: Build upgrade-test installer
+      - name: Check out the actual v0.2.0 upgrade baseline
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          ref: cdf7427c2f8ba9a48945f2d22a46c0014a082d21
+          path: upgrade-baseline
+      - name: Build v0.2.0 baseline installer for upgrade tests
         id: upgrade
-        run: python scripts/build_windows.py --version 0.2.1
+        run: |
+          Copy-Item downloads upgrade-baseline/downloads -Recurse
+          python upgrade-baseline/scripts/build_windows.py
       - name: Exercise integrated provisioning, version checks and uninstall
         shell: powershell
         timeout-minutes: 6
-        run: scripts/test_provisioning.ps1 -Installer dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.1-Setup.exe
+        run: scripts/test_provisioning.ps1 -Installer upgrade-baseline/dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.1-Setup.exe
       - name: Install and upgrade in a real standard-user account
         if: ${{ !cancelled() && steps.upgrade.outcome == 'success' }}
         shell: powershell
         timeout-minutes: 6
-        run: scripts/test_standard_user.ps1 -Installer dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.1-Setup.exe
-      - name: Remove upgrade-test artifacts
-        run: |
-          Remove-Item dist/*0.2.1*
-          python -c "import hashlib,pathlib; p=pathlib.Path('dist'); (p/'SHA256SUMS.txt').write_text(''.join(hashlib.sha256(f.read_bytes()).hexdigest()+'  '+f.name+'\n' for f in sorted(p.iterdir()) if f.suffix in ('.exe','.zip')))"
+        run: scripts/test_standard_user.ps1 -Installer upgrade-baseline/dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.1-Setup.exe
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: VoucherReorder-windows-x64

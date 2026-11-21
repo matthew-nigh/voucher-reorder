@@ -1,7 +1,8 @@
 # Voucher Reorder
 
 Move the three sections of a QuickBooks Desktop voucher check to match your check
-stock. Choose your real printer, section order and alignment once; the app sends
+stock. Choose source and output section orders, an output printer or PDF folder,
+and alignment once; the app sends
 reordered pages at **100% actual size**, one-sided.
 
 **Windows 10 and Windows 11 x64.** No subscription, no upload of check data, GPLv3
@@ -10,7 +11,7 @@ on your QuickBooks/printer before putting live check stock in the tray.
 
 ## Install and choose a mode
 
-Download `VoucherReorder-0.2.0-Setup.exe` from the PR's **Actions artifact** (or a
+Download `VoucherReorder-0.2.1-Setup.exe` from the PR's **Actions artifact** (or a
 future tagged Release). Run it normally. Python and PDF tools are included.
 
 | Mode | What you do in QuickBooks | Administrator needed? |
@@ -22,7 +23,9 @@ Declining UAC, lacking credentials, a blocked driver, or a failed optional setup
 leaves a working PDF-mode app. Settings clearly shows the active mode and has
 **Enable virtual printer (UAC)** and **Switch to PDF handoff** buttons. Declining
 printer removal still switches to PDF mode; the dormant Windows printer remains
-until an administrator removes it. The app never changes your Windows default printer.
+until an administrator removes it. Setup runs in the background with a visible
+status/progress indicator; its buttons are disabled until success or failure is
+reported. It still uses exactly one UAC prompt. The app never changes your Windows default printer.
 
 PDF mode adds a Save step; it cannot hide Windows' Print to PDF filename dialog.
 If that Windows feature or your physical printer driver is missing, enabling or
@@ -35,10 +38,19 @@ See the short [user guide](USER_GUIDE.md), exact
 ## Printers, paper and alignment
 
 All installed printers visible to the current user are listed: USB, network,
-Wi-Fi and shared queues use their normal Windows drivers. Choose a real output
-printer, not Voucher Reorder or the source PDF printer. Printer access permissions
+Wi-Fi and shared queues use their normal Windows drivers. **Voucher Reorder itself
+is never allowed as the output**, to prevent loops. Printer access permissions
 and driver installation remain Windows responsibilities; universal hardware
 compatibility is not claimed without testing each model.
+
+For a PC with no physical printer, select **Save reordered PDF (test, no physical
+printer)** and choose a folder outside the Inbox. Selecting a PDF/XPS writer such
+as Microsoft Print to PDF uses the same direct PDF-file output, with no second
+Save dialog or driver dependency. Alignment tests, manual PDFs, Inbox jobs and
+virtual-printer input all use this output choice. Job status reports the saved
+file path. Each job gets a unique filename; files remain until you delete them.
+Generated PDFs are marked and refused as new input even if copied into the Inbox.
+No PDF data is rasterized. This tests section placement, not physical margins/MICR.
 
 Settings enumerates the selected driver's paper sizes and trays and shows its
 reported printable margins. Letter, Legal, A4 and driver-specific sizes can be
@@ -50,8 +62,15 @@ A driver can still override options or have unprintable margins: verify the rule
 and plain-paper overlay, and use per-section nudges. Nothing can print outside a
 printer's physical printable area.
 
-All six section orders are supported. Split lines are inches **from the source
-page's top**. Default Letter thirds are **11/3 inches**, not 3.5. For 3.5/3.5/4-inch
+Both **Source page (QuickBooks)** and **Printed output (physical stock)** offer
+all six section orders (36 combinations). Source defaults to Check / Stub 1 / Stub 2;
+choose what the actual QuickBooks PDF shows. The left/right schematic previews
+label all bands and show their source/destination positions. The layout scales
+with DPI and scrolls in small windows. Nudges follow Check, Stub 1 and Stub 2 by name.
+
+**Section heights: leave blank if your source page has three equal sections.**
+For unequal sections, enter the two dividing-line distances **from the source
+page's top**, not each section's individual height. Default Letter thirds are **11/3 inches**, not 3.5. For 3.5/3.5/4-inch
 source sections, enter `3.5` and `7`. Sections retain their heights when moved;
 nudges clip inside their destination slot. Positive X moves right; positive Y down.
 The engine preserves PDF text, fonts, vector graphics and image data without
@@ -72,7 +91,9 @@ Waiting jobs are **held**, retaining their original printer/layout settings. Aft
 upgrade, inspect Job status and use **Resume held jobs** when the correct paper is
 loaded. Interrupted print attempts are marked for review and never auto-retried.
 
-Settings and mode persist. Activation updates the shortcuts/startup entry and
+Settings and mode persist. Version 0.2.0 files and queued-job snapshots load with
+the original source order. The unused QuickBooks-version/printer-model fields are
+ignored when loading and removed on the next settings save. Activation updates the shortcuts/startup entry and
 current-version pointer; failures attempt to restore the previous version.
 Same-version repair is allowed; lower versions are refused. Silent setup (`/S`)
 installs/upgrades the per-user app without requesting UAC; enable the optional
@@ -93,7 +114,8 @@ queues and any paper already printed. Shared Microsoft runtimes/drivers remain.
 ```text
 PDF mode:     existing PDF output -> dedicated Inbox / Print a PDF
 Virtual mode: QuickBooks -> inbox Microsoft PostScript driver -> owner-restricted Windows spool queue -> Ghostscript PDF
-Both:         private per-user queue -> vector pypdf reorder -> PDFium vector EMF -> checked GDI pages -> real printer
+Both:         private per-user queue -> vector pypdf reorder
+Output:       PDF folder, or PDFium vector EMF -> checked GDI pages -> printer
 ```
 
 Python's official embeddable runtime and pure-Python pypdf make the core testable
@@ -158,7 +180,8 @@ them. Deletion is not secure erasure; Windows spooling and backups are separate.
 
 Duplicate identical job payloads within 24 hours are suppressed, including deliberate
 identical reprints. Use a fresh QuickBooks output after reconciling paper and queues.
-A “sent” status means handed to Windows, not proof of physical printing. There is
+For printer output, a “sent” status means handed to Windows, not proof of physical printing.
+For PDF output, it reports the saved file path. There is
 no exactly-once guarantee across spooler/device/power failures. Settings provides
 job status, cancellation and release of **unattempted held** jobs only. Raw financial
 contents and parser errors are not logged. Never upload real checks or spool files
@@ -179,14 +202,15 @@ python3 scripts/build_windows.py
 Outputs are in `dist/`: the installer, matching `-sources.zip`, and `SHA256SUMS.txt`.
 The script packages official x64 Windows binaries from SHA-256-pinned downloads in
 `packaging/dependencies.json`; it does not claim to cross-compile those upstream
-programs. `--stage-only` prepares files; `--version 0.2.1` overrides the packaging
+programs. `--stage-only` prepares files; `--version 0.2.2` overrides the packaging
 version for upgrade tests (no tag/release is created). Installations need no network
 in PDF mode. Virtual setup may download Microsoft's signature-checked C++ runtime.
 
 [CI](.github/workflows/build.yml) runs Linux tests; builds on `windows-2022`;
-checks PowerShell/UI construction, the packaged runtime and optional-printer logic;
+checks all 36 source/output mappings, simulated 100/150/200% UI scaling and small
+windows, PDF output, responsive setup, PowerShell/UI construction, the packaged runtime and optional-printer logic;
 and installs, upgrades, refuses a downgrade, repairs and uninstalls in an actual
-standard-user Windows account. Artifacts include matching sources. Future `v*` tag
+standard-user Windows account, upgrading from the actual v0.2.0 source baseline. Artifacts include matching sources. Future `v*` tag
 pushes attach the same files to a Release. Hardware/QuickBooks testing is separate.
 Win10/11 **x64** are the supported targets; ARM64/x64-emulation is not yet qualified
 and no native ARM64 installer is supplied.
