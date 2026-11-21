@@ -121,12 +121,10 @@ def main():
     )
     if not (gs / "bin/gswin64c.exe").exists():
         raise RuntimeError("Ghostscript extraction failed")
-    zip_extract(files["sumatra-runtime"], vendor / "sumatra")
-    (vendor / "sumatra/SumatraPDF-3.6.1-64.exe").rename(vendor / "sumatra/SumatraPDF.exe")
     notices = stage / "licenses"
     notices.mkdir()
     shutil.copy2(stage / "runtime/LICENSE.txt", notices / "Python-LICENSE.txt")
-    for key in ("python-source", "pypdf-source", "ghostscript-source", "sumatra-source"):
+    for key in ("python-source", "pypdf-source", "ghostscript-source"):
         collect_notices(files[key], notices / key)
     # NSIS executable stubs/plugins use the zlib/libpng license. Full tool distribution
     # also includes build-time components; preserve its upstream license document.
@@ -135,8 +133,20 @@ def main():
         revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     except subprocess.CalledProcessError:
         revision = "source-archive-build"
+    tool_versions = {"7-Zip": subprocess.check_output([sevenzip, "i"], text=True).splitlines()[1]}
+    if not args.stage_only:
+        compiler = shutil.which("makensis") or str(
+            Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "NSIS/makensis.exe"
+        )
+        prefix = "/" if os.name == "nt" else "-"
+        tool_versions["NSIS"] = subprocess.check_output([compiler, prefix + "VERSION"], text=True).strip()
+        if os.name == "nt":
+            tool_versions["MSVC"] = subprocess.run(["cl"], capture_output=True, text=True).stderr.strip()
     (stage / "BUILD_INFO.json").write_text(
-        json.dumps({"version": version, "revision": revision, "dependencies": dependencies}, indent=2)
+        json.dumps(
+            {"version": version, "revision": revision, "dependencies": dependencies, "tools": tool_versions},
+            indent=2,
+        )
     )
     (stage / "SOURCE.txt").write_text(
         "Voucher Reorder is GPL-3.0-or-later. Ghostscript remains AGPL-3.0-or-later.\n"
@@ -164,10 +174,35 @@ def main():
                     archive.write(path, "voucher-reorder/" + path.relative_to(ROOT).as_posix())
         archive.write(stage / "BUILD_INFO.json", "BUILD_INFO.json")
     if not args.stage_only:
-        compiler = shutil.which("makensis") or str(
-            Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "NSIS/makensis.exe"
-        )
-        prefix = "/" if os.name == "nt" else "-"
+        if os.name == "nt":
+            helper = ROOT / "build/Provision.exe"
+            subprocess.run(
+                [
+                    "cl",
+                    "/nologo",
+                    "/O2",
+                    "/MT",
+                    "/std:c11",
+                    str(ROOT / "packaging/provision.c"),
+                    f"/Fe:{helper}",
+                    "/link",
+                    "/SUBSYSTEM:WINDOWS",
+                    "shell32.lib",
+                    "advapi32.lib",
+                    "user32.lib",
+                ],
+                cwd=helper.parent,
+                check=True,
+            )
+            subprocess.run(
+                [
+                    compiler,
+                    f"/DHELPER={helper}",
+                    f"/DOUTPUT={dist / 'VoucherReorder-Provisioning.exe'}",
+                    str(ROOT / "packaging/provision.nsi"),
+                ],
+                check=True,
+            )
         installer = dist / f"VoucherReorder-{version}-Setup.exe"
         subprocess.run(
             [

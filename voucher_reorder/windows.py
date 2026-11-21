@@ -1,6 +1,7 @@
 """Windows process boundaries. No shell interpolation of printer names or print data."""
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -21,33 +22,53 @@ def run(args, timeout=120):
 
 def convert(source, output):
     gs = ROOT / "vendor/ghostscript/bin/gswin64c.exe" if os.name == "nt" else "gs"
-    run(
-        [
-            gs,
-            "-dSAFER",
-            "-dBATCH",
-            "-dNOPAUSE",
-            "-dNOPROMPT",
-            "-sDEVICE=pdfwrite",
-            "-dCompatibilityLevel=1.7",
-            "-dAutoRotatePages=/None",
-            "-dEmbedAllFonts=true",
-            "-dSubsetFonts=true",
-            "-dDownsampleColorImages=false",
-            "-dDownsampleGrayImages=false",
-            "-dDownsampleMonoImages=false",
-            f"-sOutputFile={output}",
-            "-f",
-            source,
-        ]
-    )
+    from .bounded import LimitedOutput
+
+    args = [
+        gs,
+        "-q",
+        "-sstdout=%stderr",
+        "-dSAFER",
+        "-dBATCH",
+        "-dNOPAUSE",
+        "-dNOPROMPT",
+        "-sDEVICE=pdfwrite",
+        "-dCompatibilityLevel=1.7",
+        "-dAutoRotatePages=/None",
+        "-dEmbedAllFonts=true",
+        "-dSubsetFonts=true",
+        "-dDownsampleColorImages=false",
+        "-dDownsampleGrayImages=false",
+        "-dDownsampleMonoImages=false",
+        "-sOutputFile=%stdout",
+        "-f",
+        source,
+    ]
+    # The supervising worker enforces the deadline for the entire process tree.
+    with (
+        LimitedOutput(open(output, "wb", buffering=0)) as out,
+        subprocess.Popen(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        ) as process,
+    ):
+        try:
+            shutil.copyfileobj(process.stdout, out, length=65536)
+            if process.wait():
+                raise ValueError("PostScript conversion failed.")
+        finally:
+            if process.poll() is None:
+                process.kill()
 
 
 def forward(pdf, settings, appdata):
     from .printing import validate_pages
 
     printer = settings.printer
-    validate_pages(pdf, settings)
+    pages = validate_pages(pdf, settings)
     result = subprocess.run(
         powershell("printer_info.ps1", "-Printer", printer, "-PaperKind", settings.paper_kind),
         capture_output=True,
@@ -67,28 +88,20 @@ def forward(pdf, settings, appdata):
 
     if not printer or printer.casefold() == "voucher reorder":
         raise ValueError("Select a physical printer in Voucher Reorder Settings.")
-    appdata = Path(appdata)
-    appdata.mkdir(parents=True, exist_ok=True, mode=0o700)
-    preferences = appdata / "SumatraPDF-settings.txt"
-    if not preferences.exists():
-        preferences.write_text(
-            "RememberOpenedFiles = false\nRememberStatePerDocument = false\n"
-            "CheckForUpdates = false\nReuseInstance = false\n",
-            encoding="utf-8",
-        )
     run(
-        [
-            ROOT / "vendor/sumatra/SumatraPDF.exe",
-            "-appdata",
-            appdata,
-            "-print-to",
+        powershell(
+            "print_pages.ps1",
+            "-Printer",
             printer,
-            "-print-settings",
-            f"noscale,simplex,1x,paperkind={settings.paper_kind},disable-auto-rotation"
-            + (f",bin={settings.tray}" if settings.tray else ""),
-            "-silent",
+            "-PaperKind",
+            settings.paper_kind,
+            "-Tray",
+            settings.tray,
+            "-Pdf",
             pdf,
-        ]
+            "-Pages",
+            pages,
+        )
     )
 
 

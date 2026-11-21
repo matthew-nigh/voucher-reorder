@@ -46,7 +46,7 @@ def publish(root, value):
 def cleanup(root, keep):
     leftovers = []
     for folder in (root / "deployments").glob("app-*"):
-        if folder.name == keep:
+        if folder.name == keep or not (folder / ".retired").is_file():
             continue
         marker = folder / "PACKAGE.json"
         if not marker.is_file() or folder.is_symlink():
@@ -65,6 +65,7 @@ def cleanup(root, keep):
                         # A partial deletion must not lose the ownership marker for a later retry.
                         if folder.exists():
                             atomic_json(marker, manifest)
+                            (folder / ".retired").touch()
                     else:
                         time.sleep(0.1)
         except (OSError, ValueError):
@@ -104,6 +105,9 @@ def install(root: Path, candidate: Path, data: Path, integrate, timeout=150):
                 try:
                     integrate(candidate, manifest["version"])
                     publish(root, target)
+                    staged_uninstaller = candidate / "Uninstall.next.exe"
+                    if staged_uninstaller.exists():
+                        staged_uninstaller.replace(root / "Uninstall.exe")
                 except Exception:
                     if old:
                         integrate(root / "deployments" / old["directory"], old["version"])
@@ -113,6 +117,8 @@ def install(root: Path, candidate: Path, data: Path, integrate, timeout=150):
                         (root / "current.json").unlink(missing_ok=True)
                         (root / "current.ini").unlink(missing_ok=True)
                     raise
+            if old and old["directory"] != candidate.name:
+                (root / "deployments" / old["directory"] / ".retired").touch()
             leftovers = cleanup(root, candidate.name)
             return {"version": manifest["version"], "leftovers": leftovers}
         finally:

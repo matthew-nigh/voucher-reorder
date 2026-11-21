@@ -39,6 +39,10 @@ def main(action):
                 "PDF handoff mode is ready. Save QuickBooks PDFs in the Inbox shown in Settings. "
                 "No administrator access is needed for this mode."
             )
+            if not remove and result.returncode:
+                detail += (
+                    " Virtual printing requires the matching administrator-installed provisioning package."
+                )
             if remove and result.returncode:
                 detail += (
                     " The optional Windows printer was not removed; an administrator can remove it later."

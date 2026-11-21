@@ -12,6 +12,7 @@ from pypdf.generic import (
     NameObject,
 )
 
+from .bounded import MAX_OUTPUT, MAX_PAGES, LimitedOutput
 from .config import Settings
 
 
@@ -19,15 +20,20 @@ def reorder(source, destination: str | Path, settings: Settings) -> None:
     reader = PdfReader(source, strict=True)
     if reader.is_encrypted:
         raise ValueError("Encrypted print jobs are not supported.")
+    if "/OCProperties" in reader.root_object:
+        raise ValueError("Flatten optional-content layers before sending a PDF print job.")
+    if len(reader.pages) > MAX_PAGES:
+        raise ValueError("Too many pages.")
     if not reader.pages:
         raise ValueError("The print job has no pages.")
-    normalized = PdfWriter(clone_from=reader)
+    expanded = 0
     writer = PdfWriter()
-    for page in normalized.pages:
+    for page in reader.pages:
         if float(page.get("/UserUnit", 1)) != 1:
             raise ValueError("Nonstandard PDF UserUnit is unsupported; print at normal scale.")
         if page.get("/Annots"):
             raise ValueError("Flatten annotations before sending a PDF print job.")
+        page = PdfWriter().add_page(page)
         page.transfer_rotation_to_content()
         # CropBox is the visible sheet, including non-zero origins.
         box = page.cropbox
@@ -39,7 +45,11 @@ def reorder(source, destination: str | Path, settings: Settings) -> None:
         page.add_transformation(Transformation().translate(-x0, -y0))
         form = DecodedStreamObject()
         contents = page.get_contents()
-        form.set_data(contents.get_data() if contents is not None else b"")
+        data = contents.get_data() if contents is not None else b""
+        expanded += len(data)
+        if expanded > MAX_OUTPUT:
+            raise ValueError("Expanded PDF exceeds processing limit.")
+        form.set_data(data)
         form.update(
             {
                 NameObject("/Type"): NameObject("/XObject"),
@@ -81,5 +91,5 @@ def reorder(source, destination: str | Path, settings: Settings) -> None:
         }
     )
     writer.add_metadata({"/Producer": "Voucher Reorder", "/Title": "Voucher print job"})
-    with open(destination, "wb") as output:
+    with LimitedOutput(open(destination, "wb", buffering=0)) as output:
         writer.write(output)

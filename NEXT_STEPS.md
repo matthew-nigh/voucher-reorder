@@ -3,7 +3,7 @@
 ## Done in this round
 
 - A per-user x64 app for Windows 10/11, with HKCU startup/uninstall entries and no
-  service. Optional virtual-printer setup is offered through UAC by default;
+  service. PDF mode is the default; optional virtual-printer setup requires the protected helper;
   cancellation, missing credentials or setup failure automatically selects PDF mode.
 - Both modes share the vector reorder engine, settings and durable queue. Settings
   shows the active mode and supports switching later. PDF handoff uses a dedicated
@@ -92,9 +92,8 @@ The detailed scenarios and expected results are in TESTING_ON_WINDOWS.md.
 - Identical job bytes within 24 hours are suppressed. There is no exactly-once
   guarantee across Windows and a physical printer. Uncertain attempts require human
   reconciliation; only unattempted held jobs can be resumed.
-- Virtual mode's one machine queue/loopback port serves one signed-in user. Its LPR
-  endpoint is unauthenticated to local processes. PDF mode supports separate users
-  without a listening port. No unattended printing while signed out is promised.
+- Virtual mode uses one unshared Windows spool queue for its owner. Validate
+  retained RAW job reads, ACLs, offline behavior and migration on both Windows versions.
 - Hardware margins, paper feed/tray rules, driver overrides and MICR quality vary.
   Vectors are preserved in the engine; downstream printer rendering may rasterize.
 - Locked old payload files are retained safely and retried for cleanup at a later

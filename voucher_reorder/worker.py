@@ -3,12 +3,10 @@
 import threading
 import time
 
+from .bounded import execute
 from .config import Settings, atomic_json, data_dir, load
-from .engine import reorder
 from .inbox import Inbox
 from .locking import FileLock
-from .lpr import Server
-from .printing import validate_pages
 from .queue import Queue
 from .windows import convert, forward, message
 
@@ -24,14 +22,23 @@ def process_one(queue, settings, converter=convert, sender=forward):
             # Existing alpha jobs have no immutable settings snapshot.
             config = Settings(**state["settings"]) if "settings" in state else settings
             try:
+                queue.reconcile(job, state)
+            except OSError:
+                continue  # Keep this job queued until its receipt is durable.
+            try:
                 queue.update(job, "converting")
-                if state.get("kind", "ps") == "ps":
+                if state.get("kind", "ps") == "ps" and converter is not convert:
                     converter(job.parent / "input.ps", job.parent / "input.pdf")
-                reorder(job.parent / "input.pdf", job.parent / "output.pdf", config)
-                validate_pages(job.parent / "output.pdf", config)
+                execute("prepare", job.parent, config)
                 queue.update(job, "printing")
-                sender(job.parent / "output.pdf", config, queue.root.parent / "sumatra")
-                queue.update(job, "sent", "Sent to Windows printer queue; verify physical output.")
+                if sender is forward:
+                    execute("print", job.parent / "output.pdf", config)
+                else:
+                    sender(job.parent / "output.pdf", config, queue.root.parent / "sumatra")
+                receipt = job.parent / "windows-job-id"
+                job_id = receipt.read_text() if receipt.exists() else ""
+                suffix = f" (job {job_id})" if job_id.isdecimal() else ""
+                queue.update(job, "sent", f"Sent to Windows printer queue{suffix}; verify physical output.")
             except Exception as error:
                 attempted = queue.read(job)["state"] == "printing"
                 # Only controlled validation messages may reach status; never raw PDF/parser data.
@@ -39,20 +46,19 @@ def process_one(queue, settings, converter=convert, sender=forward):
                     str(error)
                     if type(error) is ValueError
                     and str(error).startswith(
-                        ("PDF page size", "Printer paper", "Set the printer", "The selected tray")
+                        (
+                            "Flatten optional",
+                            "PDF page size",
+                            "Printer paper",
+                            "Set the printer",
+                            "The selected tray",
+                        )
                     )
                     else "Inspect the real printer queue and paper before reprinting."
                 )
                 queue.update(job, "review" if attempted else "failed", detail)
                 return "A job needs attention. Open Voucher Reorder Job status before reprinting."
             return
-
-
-def accept_virtual(queue, path, root):
-    settings = load(root / "settings.json")
-    if not settings.printer:
-        raise ValueError("Choose a physical printer before receiving virtual jobs.")
-    return queue.accept(path, settings)
 
 
 def serve():
@@ -70,7 +76,6 @@ def serve():
 def _serve(root):
     queue = Queue(root / "jobs", recover=True)
     inbox = Inbox(root)
-    server = None
     stop = root / "stop"
     stop.unlink(missing_ok=True)
     try:
@@ -78,33 +83,29 @@ def _serve(root):
             warning = None
             try:
                 settings = load(root / "settings.json")
-                if settings.mode == "virtual" and server is None:
+                virtual_ready = False
+                if settings.mode == "virtual" and settings.printer:
                     try:
-                        server = Server(
-                            ("127.0.0.1", 515),
-                            root / "jobs",
-                            lambda p: accept_virtual(queue, p, root),
-                        )
-                        threading.Thread(target=server.serve_forever, daemon=True).start()
-                    except OSError:
-                        warning = "Virtual printer is unavailable: local port 515 is in use. Switch to PDF mode or resolve the conflict."
-                if settings.mode == "pdf" and server is not None:
-                    server.shutdown()
-                    server.server_close()
-                    server = None
+                        execute("receive", root, settings)
+                        virtual_ready = True
+                    except (OSError, ValueError):
+                        warning = "Virtual job retained or printer unavailable. Check the Windows queue and provisioning."
                 if settings.printer and settings.watch_inbox:
-                    warning = inbox.scan(queue, settings) or warning
+                    try:
+                        warning = inbox.scan(queue, settings) or warning
+                    except (ValueError, OSError):
+                        warning = "Inbox storage needs attention."
                 alert = process_one(queue, settings)
                 if alert:
                     threading.Thread(target=message, args=(alert,), daemon=True).start()
                 with queue.lock, queue.transaction():
-                    queue.expire()
+                    warning = queue.expire() or warning
                 atomic_json(
                     root / "worker.json",
                     {
                         "heartbeat": time.time(),
                         "mode": settings.mode,
-                        "virtual_ready": server is not None,
+                        "virtual_ready": virtual_ready,
                         "error": warning,
                     },
                 )
@@ -115,8 +116,5 @@ def _serve(root):
                 )
             time.sleep(1)
     finally:
-        if server:
-            server.shutdown()
-            server.server_close()
         (root / "worker.json").unlink(missing_ok=True)
         stop.unlink(missing_ok=True)
