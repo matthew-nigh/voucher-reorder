@@ -33,6 +33,7 @@ def reorder(source, destination: str | Path, settings: Settings) -> None:
             raise ValueError("Nonstandard PDF UserUnit is unsupported; print at normal scale.")
         if page.get("/Annots"):
             raise ValueError("Flatten annotations before sending a PDF print job.")
+        page = PdfWriter().add_page(page)
         page.transfer_rotation_to_content()
         # CropBox is the visible sheet, including non-zero origins.
         box = page.cropbox
