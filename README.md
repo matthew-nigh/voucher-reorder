@@ -88,14 +88,6 @@ queue first. Settings, Inbox originals and held jobs remain for safe reinstall;
 remove `%LOCALAPPDATA%\VoucherReorder` yourself only after reconciling both printer
 queues and any paper already printed. Shared Microsoft runtimes/drivers remain.
 
-**Earlier 0.1 administrator-only prototype:** its Program Files installation and
-machine printer cannot be deleted by a no-admin installer. Existing profile settings
-are reused, but do not run the old and new apps together. An administrator must
-remove that old machine installation. Back up the profile folder first: the old
-0.1 uninstaller deletes it. Restore that backup before launching the new app and
-reconcile/hold old pending jobs. Public per-user releases starting with 0.2 support
-in-place upgrades in either mode; this pre-public migration needs supervised cleanup.
-
 ## Architecture and safety
 
 ```text
@@ -144,7 +136,7 @@ alignment and MICR with the intended printer/stock after upgrading.
 CI prints a 52-page synthetic batch to Microsoft's PDF file port, checks every page
 for nonblank output and absence of image XObjects, and requires the worker tree's
 measured peak commit to stay below 600 MiB. Printer failures use distinct codes
-(configuration 6, vector/spool 7, timeout 8) and an 8 KiB sanitized local
+(configuration 6, vector/spool 7, timeout 8, unexpected termination 9) and an 8 KiB sanitized local
 `%LOCALAPPDATA%\VoucherReorder\print-error.log`; no document output is retained.
 
 PDF Inbox ingestion waits for stable size/time, a complete parseable PDF and an

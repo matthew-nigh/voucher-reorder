@@ -6,7 +6,10 @@ from pypdf import PdfReader
 
 
 def check_resources(resources):
-    for ref in resources.get("/XObject", {}).values():
+    resources = resources.get_object() if hasattr(resources, "get_object") else resources
+    objects = resources.get("/XObject", {})
+    objects = objects.get_object() if hasattr(objects, "get_object") else objects
+    for ref in objects.values():
         obj = ref.get_object()
         assert obj["/Subtype"] != "/Image", "Vector fixture became an image"
         if obj["/Subtype"] == "/Form":

@@ -32,6 +32,7 @@ ERRORS = {
     6: "Windows printer configuration failed (code 6). See print-error.log in the data folder.",
     7: "Windows page rendering or spooling failed (code 7). See print-error.log in the data folder.",
     8: "Windows printing exceeded its deadline (code 8). Check the printer before retrying.",
+    9: "Windows print worker terminated unexpectedly (code 9). See print-error.log before retrying.",
 }
 
 
@@ -152,7 +153,7 @@ def execute(operation, path, settings=None):
                     pass  # Atomic publication may not yet be visible.
             time.sleep(0.05)
         if child.returncode:
-            raise ValueError(ERRORS.get(child.returncode, ERRORS[5]))
+            raise ValueError(ERRORS.get(child.returncode, ERRORS[9 if operation == "print" else 5]))
     finally:
         if os.name != "nt":
             try:

@@ -14,7 +14,7 @@ try {
     Add-Printer -Name $name -PortName $result -DriverName $driver.Name
     & $python -c "from voucher_reorder.alignment import create; from voucher_reorder.config import Settings; from pypdf import PdfWriter; import sys; create(sys.argv[1], Settings()); w=PdfWriter(); [w.append(sys.argv[1]) for _ in range(52)]; w.write(sys.argv[2])" (Join-Path $temp 'sample.pdf') $source
     if ($LASTEXITCODE) { throw 'Unable to generate synthetic batch' }
-    & $python -c "from pathlib import Path; from voucher_reorder.config import Settings; from voucher_reorder.bounded import execute; import sys; execute('print',Path(sys.argv[1]),Settings(printer=sys.argv[2]))" $source $name
+    & $python -c "from pathlib import Path; from voucher_reorder.config import Settings; from voucher_reorder.bounded import execute; import sys; p=Path(sys.argv[1]); s=Settings(printer=sys.argv[2]); execute('prepare',p.parent,s); execute('print',p.parent/'output.pdf',s)" $source $name
     if ($LASTEXITCODE) { Get-Content (Join-Path $env:LOCALAPPDATA 'VoucherReorder\print-error.log'); throw 'Bounded Windows print failed' }
     $metrics = Get-Content (Join-Path $temp 'print-metrics.json') -Raw | ConvertFrom-Json
     Write-Output "52-page print child peak job memory: $($metrics.peak_job_bytes) bytes"

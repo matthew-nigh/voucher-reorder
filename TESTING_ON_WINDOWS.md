@@ -101,9 +101,8 @@ Exercise memory/time limits and check that the next ordinary job completes.
         Rerunning setup must recover. Test disk-full and files locked by security
         software: old usable version/settings are preserved where rollback is possible;
         never delete an unknown folder. Retained old payloads must be cleaned later.
-24. [ ] If migrating the old administrator-only 0.1 prototype, back up the profile folder
-        and supervise admin cleanup first. Its uninstaller deletes profile data. Restore
-        settings, reconcile old jobs, and ensure the old worker does not remain running.
+24. [ ] Confirm unrelated or obsolete printer queues do not block the per-user app's
+        update/uninstall. No port-515 migration is required or provided.
 
 ## Uninstall, reinstall and report
 
