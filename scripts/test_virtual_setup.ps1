@@ -8,7 +8,7 @@ $global:printer = $null
 $global:port = $false
 $sid = 'S-1-5-21-1-2-3-1001'
 function Get-Printer { param($Name,$ErrorAction) $global:printer }
-function Get-PrinterPort { param($Name,$ErrorAction) if ($global:port) { @{PortMonitor='Local Port'} } }
+function Get-PrinterPort { param($Name,$ErrorAction) if ($global:port) { @{PortMonitor='Local Monitor'} } }
 function Get-PrinterDriver { param($Name,$ErrorAction) @{Name=$Name} }
 function Add-PrinterPort { param($Name) if ($Name -ne 'NUL:') { throw 'Wrong port' }; $global:port=$true }
 function Add-Printer { param($Name,$PortName,$DriverName,$Comment,$PermissionSDDL,[switch]$KeepPrintedJobs,$Datatype)

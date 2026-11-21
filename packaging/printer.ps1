@@ -32,7 +32,7 @@ try {
         } finally { Remove-Item -LiteralPath $redist -Force -ErrorAction SilentlyContinue }
     }
     $existing = Get-PrinterPort -Name $port -ErrorAction SilentlyContinue
-    if ($existing -and $existing.PortMonitor -ne 'Local Port') { throw 'Unexpected port monitor.' }
+    if ($existing -and $existing.PortMonitor -notin @('Local Monitor','Local Port')) { throw 'Unexpected port monitor.' }
     if (-not $existing) { Add-PrinterPort -Name $port }
     if (-not (Get-PrinterDriver -Name $driver -ErrorAction SilentlyContinue)) { Add-PrinterDriver -Name $driver }
     $acl = "O:BAG:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;SWRC;;;$TargetSid)(A;OIIO;GA;;;$TargetSid)"
