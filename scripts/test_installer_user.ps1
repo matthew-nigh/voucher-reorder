@@ -35,6 +35,8 @@ try {
         if ((Get-Date) -gt $deadline) { throw 'Worker did not start' }
         Start-Sleep -Milliseconds 100
     }
+    # Require a fresh startup acknowledgement from this upgraded deployment.
+    Remove-Item (Join-Path $data 'watcher.json') -ErrorAction SilentlyContinue
     Run-Setup $UpgradeInstaller
     if (-not $worker.WaitForExit(10000)) { throw 'Old worker did not stop during upgrade' }
     $run=Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
@@ -50,12 +52,8 @@ try {
     # Load actual v0.2.0 settings and a queued snapshot using the upgraded runtime.
     $newDir=Join-Path $root ('deployments\'+$current.directory)
     $newPy=Join-Path $newDir 'runtime\python.exe'
-    & $newPy (Join-Path $newDir 'app.py') stop
-    if ($LASTEXITCODE -ne 0) { throw 'Could not stop upgraded worker for snapshot migration probe' }
-    & $newPy -c "from voucher_reorder.config import *; from dataclasses import asdict; s=load(data_dir()/'settings.json'); assert tuple(s.source_order)==(0,1,2); assert tuple(s.order)==(2,0,1); save(data_dir()/'settings.json',s); assert 'quickbooks_version' not in asdict(s) and 'printer_model' not in asdict(s)"
-    if ($LASTEXITCODE -ne 0) { throw 'v0.2.0 settings did not migrate' }
-    & $newPy -c "from voucher_reorder.config import *; from voucher_reorder.queue import Queue; from voucher_reorder.worker import process_one; q=Queue(data_dir()/'jobs'); job=q.jobs()[0]; q.update(job,'queued'); calls=[]; process_one(q,load(data_dir()/'settings.json'),sender=lambda p,s,a:calls.append(tuple(s.source_order))); assert calls==[(0,1,2)]; assert q.read(job)['state']=='sent'"
-    if ($LASTEXITCODE -ne 0) { throw 'v0.2.0 queued settings did not migrate' }
+    & $newPy (Join-Path $PSScriptRoot 'test_upgrade_snapshot.py') $data
+    if ($LASTEXITCODE -ne 0) { throw 'v0.2.0 settings/queued snapshot migration probe failed (see diagnostics above)' }
     & $newPy (Join-Path $PSScriptRoot 'test_notifications_windows.py')
     if ($LASTEXITCODE -ne 0) { throw 'Standard-user Inbox notifications failed' }
     Run-Setup $Installer 1 # real downgrade attempt must fail without changing active version

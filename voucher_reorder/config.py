@@ -110,7 +110,11 @@ def save(path: Path, settings: Settings):
 
 
 def from_dict(raw) -> Settings:
-    """Migrate v0.2.0 settings and immutable queued-job snapshots."""
+    """Synchronously migrate v0.2.0 settings and immutable queued-job snapshots.
+
+    Defaults and legacy-field removal happen on a copy, before processing can
+    start; no watcher, background rewrite, or migration timing is involved.
+    """
     raw = dict(raw)
     raw.pop("quickbooks_version", None)
     raw.pop("printer_model", None)
