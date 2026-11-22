@@ -9,6 +9,7 @@ import time
 from dataclasses import replace
 from pathlib import Path
 
+import voucher_reorder
 from voucher_reorder.alignment import create
 from voucher_reorder.config import Settings, save
 from voucher_reorder.process import background_options
@@ -116,7 +117,11 @@ def main(virtual=False):
                 assert read("metrics.json")["launches"] >= 1
                 # The processor is gone; persisted status remains readable.
                 result = subprocess.run(
-                    [sys.executable, str(Path(__file__).resolve().parents[1] / "app.py"), "status"],
+                    [
+                        sys.executable,
+                        str(Path(voucher_reorder.__file__).resolve().parents[1] / "app.py"),
+                        "status",
+                    ],
                     env=env,
                     capture_output=True,
                     text=True,

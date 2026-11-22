@@ -13,6 +13,7 @@ try {
     Copy-Item $Installer (Join-Path $shared 'install.exe')
     Copy-Item $UpgradeInstaller (Join-Path $shared 'upgrade.exe')
     Copy-Item (Join-Path $PSScriptRoot 'test_installer_user.ps1') $shared
+    Copy-Item (Join-Path $PSScriptRoot 'test_notifications_windows.py') $shared
     $result=Join-Path $shared 'result.txt'
     $args='-NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path $shared 'test_installer_user.ps1')+'" -Installer "'+(Join-Path $shared 'install.exe')+'" -UpgradeInstaller "'+(Join-Path $shared 'upgrade.exe')+'" -Result "'+$result+'"'
     $p=Start-Process (Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe') -Credential $credential -LoadUserProfile -ArgumentList $args -PassThru

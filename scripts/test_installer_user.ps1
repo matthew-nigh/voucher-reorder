@@ -5,7 +5,8 @@ try {
     $principal=[Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
     if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Test must run as standard user' }
     function Run-Setup($path,$expected=0) {
-        $p=Start-Process -FilePath $path -ArgumentList '/S' -Wait -PassThru
+        $p=Start-Process -FilePath $path -ArgumentList '/S' -PassThru
+        if (-not $p.WaitForExit(120000)) { throw 'Installer process timed out' }
         if (($expected -eq 0 -and $p.ExitCode -ne 0) -or ($expected -ne 0 -and $p.ExitCode -eq 0)) { throw "Unexpected setup exit $($p.ExitCode)" }
     }
     # CreateProcessWithLogon may inherit the runner's environment; use this token's known folders.

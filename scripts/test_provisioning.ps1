@@ -6,7 +6,9 @@ $data = Join-Path $env:LOCALAPPDATA 'VoucherReorder'
 function Setup($path,$virtual) {
     Write-Output "Starting setup $([IO.Path]::GetFileName($path)); virtual=$virtual"
     $arguments = if ($virtual) { '/S /VIRTUAL=1' } else { '/S' }
-    $p = Start-Process (Resolve-Path $path) -ArgumentList $arguments -Wait -PassThru
+    $p = Start-Process (Resolve-Path $path) -ArgumentList $arguments -PassThru
+    # -Wait waits for descendants too, including the intentionally persistent watcher.
+    if (-not $p.WaitForExit(120000)) { throw 'Installer process timed out' }
     if ($p.ExitCode) { throw "Setup failed: $($p.ExitCode)" }
     Write-Output 'Setup process exited'
     Get-Content (Join-Path $data 'mode-status.txt') -ErrorAction SilentlyContinue
