@@ -69,7 +69,7 @@ def validate_vector_pdf(path):
     if not reader.pages:
         raise PdfError("empty")
     paint = {b"Tj", b"TJ", b"'", b'"', b"S", b"s", b"f", b"F", b"f*", b"B", b"B*", b"b", b"b*", b"sh"}
-    streams, resources_seen, painted_cache = {}, set(), {}
+    streams, resources_seen, painted_cache, resource_streams = {}, {}, {}, {}
     expanded = 0
 
     def resolve(obj):
@@ -93,6 +93,14 @@ def validate_vector_pdf(path):
                 raise PdfError("image")
         return streams[key][1]
 
+    def resource_stream(stream, resources, depth):
+        resources = resolve(resources)
+        resource_streams[(id(stream), id(resources))] = (stream, resources)
+        if len(resource_streams) > 100000:
+            raise PdfError("resources")
+        operations(stream)
+        resources_safe(resources, depth)
+
     def resources_safe(resources, depth=0):
         resources = resolve(resources)
         key = id(resources)
@@ -100,7 +108,7 @@ def validate_vector_pdf(path):
             return
         if depth > 40:
             raise PdfError("depth")
-        resources_seen.add(key)
+        resources_seen[key] = resources
         if len(resources_seen) > 100000:
             raise PdfError("resources")
         for obj in resolve(resources.get("/XObject", {})).values():
@@ -108,24 +116,20 @@ def validate_vector_pdf(path):
             if obj.get("/Subtype") == "/Image":
                 raise PdfError("image")
             if obj.get("/Subtype") == "/Form":
-                operations(obj)
-                resources_safe(obj.get("/Resources", resources), depth + 1)
+                resource_stream(obj, obj.get("/Resources", resources), depth + 1)
         for pattern in resolve(resources.get("/Pattern", {})).values():
             pattern = resolve(pattern)
             if pattern.get("/PatternType") == 1:
-                operations(pattern)
-                resources_safe(pattern.get("/Resources", resources), depth + 1)
+                resource_stream(pattern, pattern.get("/Resources", resources), depth + 1)
         for state in resolve(resources.get("/ExtGState", {})).values():
             mask = resolve(resolve(state).get("/SMask"))
             if isinstance(mask, dict) and "/G" in mask:
                 group = resolve(mask["/G"])
-                operations(group)
-                resources_safe(group.get("/Resources", resources), depth + 1)
+                resource_stream(group, group.get("/Resources", resources), depth + 1)
         for font in resolve(resources.get("/Font", {})).values():
             font = resolve(font)
             for glyph in resolve(font.get("/CharProcs", {})).values():
-                operations(resolve(glyph))
-            resources_safe(font.get("/Resources", {}), depth + 1)
+                resource_stream(resolve(glyph), font.get("/Resources", resources), depth + 1)
 
     def inspect(stream, resources, ancestors):
         resources = resolve(resources)
@@ -156,5 +160,9 @@ def validate_vector_pdf(path):
     for page in reader.pages:
         resources = page.get("/Resources", {})
         resources_safe(resources)
+        # Patterns, masks and glyph programs can execute Forms too. Validate
+        # their invocations even when the page does not paint that resource.
+        for stream, context in resource_streams.values():
+            inspect(stream, context, set())
         if not inspect(page.get_contents(), resources, set())[0]:
             raise PdfError("blank")

@@ -60,6 +60,11 @@ jobs:
           }
       - name: Build installer and corresponding source
         run: python scripts/build_windows.py
+      - name: Preserve v0.2.1 engine for identical-input size comparisons
+        shell: bash
+        run: |
+          git fetch --depth=1 origin dc93433ad7ff481acab996f801be6388ec9a7771
+          git show dc93433ad7ff481acab996f801be6388ec9a7771:voucher_reorder/engine.py > build/feedback-baseline-engine.py
       - name: Smoke test the bundled Windows runtime and Ghostscript
         run: |
           & build/windows/runtime/python.exe scripts/smoke_packaged.py
@@ -102,6 +107,13 @@ jobs:
         shell: powershell
         timeout-minutes: 6
         run: scripts/test_standard_user.ps1 -Installer upgrade-baseline/dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.2-Setup.exe
+      - name: Upload synthetic PDF size and reprint fixtures
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: PDF-feedback-fixtures
+          path: build/feedback-artifacts/*
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: VoucherReorder-windows-x64

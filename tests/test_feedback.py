@@ -244,3 +244,58 @@ def test_spool_selection_preserves_owner_status_and_quarantine_checks():
     ):
         with pytest.raises(ValueError, match="owner-restricted"):
             select_candidate({**printer, field: value}, jobs, "S-1-FAKE", [])
+
+
+@pytest.mark.parametrize("location", ["form", "pattern", "glyph", "mask"])
+@pytest.mark.parametrize(
+    "content,reason", [(b"BI /W 1 /H 1 /BPC 8 /CS /G ID \x00 EI", "image"), (b"/Loop Do", "recursive")]
+)
+def test_hidden_resource_programs_cannot_bypass_preflight(tmp_path, location, content, reason):
+    writer = PdfWriter()
+    page = writer.add_blank_page(612, 792)
+    program = DecodedStreamObject()
+    program.set_data(content)
+    program[NameObject("/Subtype")] = NameObject("/Form")
+    ref = writer._add_object(program)
+    resources = DictionaryObject({NameObject("/XObject"): DictionaryObject({NameObject("/Loop"): ref})})
+    program[NameObject("/Resources")] = resources
+    if location == "pattern":
+        program[NameObject("/PatternType")] = NumberObject(1)
+        resources = DictionaryObject({NameObject("/Pattern"): DictionaryObject({NameObject("/P"): ref})})
+    elif location == "glyph":
+        resources = DictionaryObject(
+            {
+                NameObject("/Font"): DictionaryObject(
+                    {
+                        NameObject("/F"): DictionaryObject(
+                            {
+                                NameObject("/Subtype"): NameObject("/Type3"),
+                                NameObject("/Resources"): resources,
+                                NameObject("/CharProcs"): DictionaryObject({NameObject("/A"): ref}),
+                            }
+                        )
+                    }
+                )
+            }
+        )
+    elif location == "mask":
+        resources = DictionaryObject(
+            {
+                NameObject("/ExtGState"): DictionaryObject(
+                    {
+                        NameObject("/GS"): DictionaryObject(
+                            {NameObject("/SMask"): DictionaryObject({NameObject("/G"): ref})}
+                        )
+                    }
+                )
+            }
+        )
+    page[NameObject("/Resources")] = resources
+    painted = DecodedStreamObject()
+    painted.set_data(b"0 0 10 10 re f")
+    page[NameObject("/Contents")] = writer._add_object(painted)
+    source = tmp_path / "hidden.pdf"
+    writer.write(source)
+    with pytest.raises(PdfError) as error:
+        validate_vector_pdf(source)
+    assert error.value.reason == reason
