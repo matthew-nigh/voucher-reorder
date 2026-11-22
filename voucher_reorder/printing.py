@@ -2,6 +2,8 @@
 
 from pypdf import PdfReader
 
+from .filesystem import replace_file
+
 
 def validate_pages(pdf, settings):
     from .bounded import MAX_PAGES
@@ -41,7 +43,7 @@ def save_pdf(source, settings, root):
             output.flush()
             os.fsync(output.fileno())
         # UUID filenames avoid collisions; the private temp is on the same volume.
-        os.replace(temporary, destination)
+        replace_file(temporary, destination)
     finally:
         from pathlib import Path
 

@@ -7,6 +7,8 @@ import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from .filesystem import replace_file
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -93,7 +95,7 @@ def atomic_json(path: Path, value):
             json.dump(value, f, allow_nan=False)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(name, path)
+        replace_file(name, path)
     finally:
         Path(name).unlink(missing_ok=True)
 

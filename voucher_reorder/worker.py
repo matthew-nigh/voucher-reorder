@@ -29,15 +29,20 @@ def process_one(queue, settings, converter=convert, sender=forward):
                     queue.update(job, "converting")
             except OSError:
                 continue  # Keep this job queued until its receipt is durable.
+            operation = "prepare"
             try:
                 if state.get("kind", "ps") == "ps" and converter is not convert:
                     converter(job.parent / "input.ps", job.parent / "input.pdf")
                 execute("prepare", job.parent, config)
+                operation = "mark-printing"
                 queue.update(job, "printing")
                 if config.output_mode == "pdf":
+                    operation = "save-pdf"
                     destination = save_pdf(job.parent / "output.pdf", config, queue.root.parent)
+                    operation = "mark-sent"
                     queue.update(job, "sent", f"Saved reordered PDF: {destination}")
                     return
+                operation = "print"
                 if sender is forward:
                     execute("print", job.parent / "output.pdf", config)
                 else:
@@ -45,8 +50,23 @@ def process_one(queue, settings, converter=convert, sender=forward):
                 receipt = job.parent / "windows-job-id"
                 job_id = receipt.read_text() if receipt.exists() else ""
                 suffix = f" (job {job_id})" if job_id.isdecimal() else ""
+                operation = "mark-sent"
                 queue.update(job, "sent", f"Sent to Windows printer queue{suffix}; verify physical output.")
             except Exception as error:
+                # Numeric OS codes and a fixed operation name diagnose sharing
+                # failures without logging document contents or parser messages.
+                try:
+                    atomic_json(
+                        queue.root.parent / "processing-error.json",
+                        {
+                            "operation": operation,
+                            "error": type(error).__name__,
+                            "winerror": getattr(error, "winerror", None),
+                            "errno": getattr(error, "errno", None),
+                        },
+                    )
+                except OSError:
+                    pass
                 attempted = queue.read(job)["state"] == "printing"
                 # Only controlled validation messages may reach status; never raw PDF/parser data.
                 detail = (

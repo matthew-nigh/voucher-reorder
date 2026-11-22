@@ -85,7 +85,8 @@ def main(virtual=False):
 
             def sent(count):
                 jobs = states()
-                assert not any(j["state"] in {"failed", "review"} for j in jobs), jobs
+                diagnostics = read("processing-error.json")
+                assert not any(j["state"] in {"failed", "review"} for j in jobs), (jobs, diagnostics)
                 return sum(j["state"] == "sent" for j in jobs) == count
 
             def quiet():
