@@ -36,6 +36,9 @@ try {
     }
     Run-Setup $UpgradeInstaller
     if (-not $worker.WaitForExit(10000)) { throw 'Old worker did not stop during upgrade' }
+    $run=Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+    if ($run.PSObject.Properties.Name -contains 'VoucherReorder') { throw 'Legacy worker autostart remains' }
+    if ($run.VoucherReorderWatcher -notmatch ' watch$') { throw 'Notification watcher autostart missing' }
     $current=Get-Content (Join-Path $root 'current.json') -Raw | ConvertFrom-Json
     if ([version]$current.version -le [version]$old.version) { throw 'Version did not advance' }
     if (Test-Path $oldDir) { throw 'Old deployment not cleaned up' }
@@ -52,6 +55,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'v0.2.0 settings did not migrate' }
     & $newPy -c "from voucher_reorder.config import *; from voucher_reorder.queue import Queue; from voucher_reorder.worker import process_one; q=Queue(data_dir()/'jobs'); job=q.jobs()[0]; q.update(job,'queued'); calls=[]; process_one(q,load(data_dir()/'settings.json'),sender=lambda p,s,a:calls.append(tuple(s.source_order))); assert calls==[(0,1,2)]; assert q.read(job)['state']=='sent'"
     if ($LASTEXITCODE -ne 0) { throw 'v0.2.0 queued settings did not migrate' }
+    & $newPy (Join-Path $PSScriptRoot 'test_notifications_windows.py')
+    if ($LASTEXITCODE -ne 0) { throw 'Standard-user Inbox notifications failed' }
     Run-Setup $Installer 1 # real downgrade attempt must fail without changing active version
     $check=Get-Content (Join-Path $root 'current.json') -Raw | ConvertFrom-Json
     if ($check.version -ne $current.version) { throw 'Downgrade changed active install' }
@@ -62,6 +67,8 @@ try {
     Start-Sleep -Seconds 2
     if (Test-Path (Join-Path $root 'deployments')) { throw 'Deployment files remain after uninstall' }
     if (Test-Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\VoucherReorder') { throw 'Uninstall entry remains' }
+    $run=Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+    if ($run.PSObject.Properties.Name -contains 'VoucherReorderWatcher') { throw 'Watcher autostart remains after uninstall' }
     if (-not (Test-Path (Join-Path $data 'settings.json'))) { throw 'Reinstall settings were not preserved' }
     'PASS: standard-user install, UI construction, upgrade, settings/job preservation, downgrade refusal, repair and uninstall' | Set-Content $Result
 } catch {

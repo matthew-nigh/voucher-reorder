@@ -14,7 +14,10 @@ def integrate(root, candidate, version):
 
     if candidate is None:
         run(powershell("user_links.ps1", "-Action", "remove"))
-        for subkey, value in [(r"Software\Microsoft\Windows\CurrentVersion\Run", "VoucherReorder")]:
+        for subkey, value in [
+            (r"Software\Microsoft\Windows\CurrentVersion\Run", name)
+            for name in ("VoucherReorder", "VoucherReorderWatcher")
+        ]:
             try:
                 with winreg.OpenKey(winreg.HKEY_CURRENT_USER, subkey, 0, winreg.KEY_SET_VALUE) as key:
                     winreg.DeleteValue(key, value)
@@ -30,13 +33,18 @@ def integrate(root, candidate, version):
         return
     run(powershell("user_links.ps1", "-Action", "install", "-Candidate", candidate))
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run") as key:
+        try:
+            winreg.DeleteValue(key, "VoucherReorder")
+        except FileNotFoundError:
+            pass
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run") as key:
         winreg.SetValueEx(
             key,
-            "VoucherReorder",
+            "VoucherReorderWatcher",
             0,
             winreg.REG_SZ,
             subprocess.list2cmdline(
-                [str(candidate / "runtime/pythonw.exe"), str(candidate / "app.py"), "worker"]
+                [str(candidate / "runtime/pythonw.exe"), str(candidate / "app.py"), "watch"]
             ),
         )
     with winreg.CreateKey(
@@ -70,7 +78,7 @@ def main():
         except OSError:
             # Activation has committed: never report a staging failure that makes
             # NSIS delete the now-active deployment. Settings can retry this check.
-            print("App updated. Check provisioning version in Settings before virtual printing.")
+            print("App updated. Enable the fixed-port printer in Settings before virtual printing.")
     else:
         import winreg
 
@@ -83,7 +91,11 @@ def main():
                 0,
                 winreg.KEY_SET_VALUE,
             ) as key:
-                winreg.DeleteValue(key, "VoucherReorder")
+                for name in ("VoucherReorder", "VoucherReorderWatcher"):
+                    try:
+                        winreg.DeleteValue(key, name)
+                    except FileNotFoundError:
+                        pass
         except FileNotFoundError:
             pass
         try:

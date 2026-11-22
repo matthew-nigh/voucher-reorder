@@ -2,7 +2,7 @@ name: Test and build Windows installer
 on:
   pull_request:
   push:
-    branches: [main, codex/windows-test-fixes]
+    branches: [main, codex/windows-test-fixes, codex/windows-test-fixes-2]
     tags: ['v*']
   workflow_dispatch:
 
@@ -69,6 +69,11 @@ jobs:
         run: |
           & build/windows/runtime/python.exe scripts/smoke_packaged.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Exercise native Inbox notifications and processor idle exit
+        timeout-minutes: 3
+        run: |
+          & build/windows/runtime/python.exe scripts/test_notifications_windows.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Check settings preview, DPI scaling, PDF output and asynchronous setup
         shell: powershell
         timeout-minutes: 3
@@ -98,15 +103,15 @@ jobs:
         run: |
           Copy-Item downloads upgrade-baseline/downloads -Recurse
           python upgrade-baseline/scripts/build_windows.py
-      - name: Exercise integrated provisioning, version checks and uninstall
+      - name: Migrate legacy queue, test no-dialog clone printing and built-in removal
         shell: powershell
         timeout-minutes: 6
-        run: scripts/test_provisioning.ps1 -Installer upgrade-baseline/dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.2-Setup.exe
+        run: scripts/test_provisioning.ps1 -Installer upgrade-baseline/dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.3-Setup.exe
       - name: Install and upgrade in a real standard-user account
         if: ${{ !cancelled() && steps.upgrade.outcome == 'success' }}
         shell: powershell
         timeout-minutes: 6
-        run: scripts/test_standard_user.ps1 -Installer upgrade-baseline/dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.2-Setup.exe
+        run: scripts/test_standard_user.ps1 -Installer upgrade-baseline/dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.3-Setup.exe
       - name: Upload synthetic PDF size and reprint fixtures
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -117,7 +122,10 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: VoucherReorder-windows-x64
-          path: dist/*
+          path: |
+            dist/VoucherReorder-0.2.3-Setup.exe
+            dist/VoucherReorder-0.2.3-sources.zip
+            dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 90
 
@@ -139,8 +147,13 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
+          printf '%s\n' 'Download VoucherReorder-0.2.3-Setup.exe to install. The source archive and SHA256SUMS.txt are only for building from source or verifying the download. The optional printer uses built-in Windows tools in one UAC elevation; no separate Provisioning executable is needed. Complete TESTING_ON_WINDOWS.md on plain paper before using check stock. This installer is unsigned.' > release-notes.txt
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | while IFS= read -r asset; do
+              case "$asset" in *-Provisioning.exe) gh release delete-asset "$RELEASE_TAG" "$asset" --yes ;; esac
+            done
             gh release upload "$RELEASE_TAG" dist/* --clobber
+            gh release edit "$RELEASE_TAG" --notes-file release-notes.txt
           else
-            gh release create "$RELEASE_TAG" dist/* --verify-tag --title "Voucher Reorder $RELEASE_TAG" --notes "Unsigned Windows x64 installer. Download the matching source archive and checksums. Complete TESTING_ON_WINDOWS.md on plain paper before using check stock."
+            gh release create "$RELEASE_TAG" dist/* --verify-tag --title "Voucher Reorder $RELEASE_TAG" --notes-file release-notes.txt
           fi

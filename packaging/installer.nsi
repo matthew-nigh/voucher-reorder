@@ -81,6 +81,9 @@ Section /o "Virtual printer (one administrator prompt)" VirtualPrinter
   IfSilent +2
   MessageBox MB_ICONINFORMATION "$1"
 SectionEnd
+Section "-Start notification watcher"
+  Exec '"$Candidate\runtime\pythonw.exe" "$Candidate\app.py" register'
+SectionEnd
 Function SelectVirtual
   ${GetParameters} $0
   ClearErrors

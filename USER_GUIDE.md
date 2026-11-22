@@ -62,7 +62,7 @@ Flatten layers before export and split batches larger than 250 pages.
 **If nothing prints:** check Job status, the real Windows printer queue, and paper
 already printed. “Sent” can still mean waiting in Windows. Do not simply print again.
 Exact duplicate PDFs are suppressed for 24 hours. Cancel unwanted jobs in both the
-app and Windows. Inbox originals remain until you delete them after checking output.
+app and Windows. Inbox arrivals move to unique jobs and are deleted after successful output. Failed inputs remain in Needs attention; Job status offers Open folder and Retry.
 
 **Switch modes:** use the buttons at the top of the app. Adding/removing the virtual
 printer needs UAC; PDF mode does not. During setup, “Setting up the Voucher Reorder
@@ -84,5 +84,5 @@ with a fresh bounded print process each time. Printing time scales with page cou
 alignment and MICR on the intended printer before using check stock.
 
 To remove machine provisioning, reconcile/cancel Windows queue jobs and uninstall
-**Voucher Reorder Printer Provisioning** from Windows Apps as administrator. The
+the optional printer through Settings using built-in Windows tools. No separate provisioning installer is needed. The
 per-user app and its PDF mode are independent of that package.

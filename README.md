@@ -11,12 +11,14 @@ on your QuickBooks/printer before putting live check stock in the tray.
 
 ## Install and choose a mode
 
-Download `VoucherReorder-0.2.2-Setup.exe` from the PR's **Actions artifact** (or a
+Download `VoucherReorder-0.2.3-Setup.exe` from the PR's **Actions artifact** (or a
 future tagged Release). Run it normally. Python and PDF tools are included.
+The source archive and SHA256SUMS.txt are only for building from source or verifying
+the download; there is no separate Provisioning executable.
 
 | Mode | What you do in QuickBooks | Administrator needed? |
 | --- | --- | --- |
-| **Virtual printer — optional** | Print to **Voucher Reorder**; the app reorders and forwards automatically. No PDF Save dialog. | Only to install/remove the optional Windows printer and its prerequisite. An administrator first installs the separate provisioning package; Settings requests UAC and a different administrator can provide credentials for the signed-in user. |
+| **Virtual printer — optional** | Print to **Voucher Reorder**; the app reorders and forwards automatically. No PDF Save dialog. | Only to create/remove the clone using built-in Windows PowerShell printer tools in one UAC elevation. No unsigned executable runs elevated. |
 | **PDF handoff — default** | Print to an **already available** Microsoft Print to PDF, then save in the Inbox shown in the app. Alternatively save/export a PDF elsewhere and click **Print a PDF**. | **No** admin access to install, upgrade, run or remove the per-user app. |
 
 Declining UAC, lacking credentials, a blocked driver, or a failed optional setup
@@ -50,8 +52,7 @@ Save dialog or driver dependency. Alignment tests, manual PDFs, Inbox jobs and
 virtual-printer input all use this output choice. Job status reports the saved
 file path. Each job gets a unique filename; files remain until you delete them.
 Saved PDFs can be submitted again. Set the input section order to match that PDF
-before reordering it again. Output folders must remain outside the Inbox; unchanged
-Inbox files are still processed only once.
+before reordering it again. Output folders must remain outside the Inbox; Inbox arrivals are moved to unique queue files and deleted after successful output.
 No PDF data is rasterized. This tests section placement, not physical margins/MICR.
 
 Settings enumerates the selected driver's paper sizes and trays and shows its
@@ -114,35 +115,48 @@ queues and any paper already printed. Shared Microsoft runtimes/drivers remain.
 ## Architecture and safety
 
 ```text
-PDF mode:     existing PDF output -> dedicated Inbox / Print a PDF
-Virtual mode: QuickBooks -> inbox Microsoft PostScript driver -> owner-restricted Windows spool queue -> Ghostscript PDF
-Both:         private per-user queue -> vector pypdf reorder
+PDF mode:     existing PDF output -> watched Inbox
+Virtual mode: app -> Microsoft Print To PDF clone -> Incoming/job.pdf
+Both:         native event broker -> unique private job -> bounded PDF processor
 Output:       PDF folder, or PDFium vector EMF -> checked GDI pages -> printer
 ```
 
-Python's official embeddable runtime and pure-Python pypdf make the core testable
-on Linux. The native UI uses Windows PowerShell/WinForms. The per-user installer
-starts in PDF mode with no administrator access. Select **Virtual printer (one
-administrator prompt)** in setup, or **Enable virtual printer** in Settings, to
-install the embedded, matching provisioning package and configure the queue in
-one UAC elevation. No separate download is needed. Silent setup defaults to PDF;
-`/S /VIRTUAL=1` explicitly enables the optional component. Declining UAC leaves PDF
-mode usable. The elevated package runs only its native launcher and scripts in
-protected Program Files; the per-user app stays unelevated. Use trusted installers
-and verify the published checksums: these builds are unsigned.
+The no-window broker waits on `ReadDirectoryChangesW`,
+`FindFirstPrinterChangeNotification`, and an active processor's exit handle.
+There are no background polling loops, timers, heartbeats, or periodic process
+launches. PDF parsing and printing run only for a job; the processor drains the
+queue and exits. Job status reads persisted records, not a heartbeat.
 
-The protected helper configures one unshared Windows printer using Microsoft
-MS Publisher Imagesetter, the local NUL: port, and retained RAW jobs. The signed-in
-owner consumes jobs through spooler RPC. Offline jobs stay in that restricted queue.
-Reconcile paper and both queues before resubmitting any job in review. The package
-has its own **Voucher Reorder Printer Provisioning** entry in Windows Apps; uninstall
-it as administrator after reconciling/canceling queued jobs. Shared runtimes and OS
-drivers remain installed. Per-user updates/uninstall never block on a legacy LPR
-queue; no port-515 migration is supplied because that queue was never deployed.
+Optional setup elevates only Windows' signed `powershell.exe`, once, with a
+snapshot of the printer commands. `Add-PrinterPort` and `Add-Printer` create an
+owner-restricted, unshared **Voucher Reorder** printer using the built-in
+**Microsoft Print To PDF** driver. Its local port is the literal absolute path
+`%LOCALAPPDATA%\VoucherReorder\Incoming\job.pdf`, not `FILE:` or `PORTPROMPT:`.
+That fixed port supplies the filename, so ordinary application printing needs no
+Save As dialog. The user's data path is captured before elevation, including when
+a different administrator supplies credentials. No provisioning executable,
+signing setup, security-policy change, or runtime download is performed.
+`/S /VIRTUAL=1` opts in; plain `/S` needs no administrator access.
 
-Provisioning metadata, executable hash and app version are checked before elevation.
-An app upgrade with an older provisioning package falls back to PDF mode and explains
-how to enable the updated optional component. App installation itself needs no UAC.
+The broker opens an arrival denying read/write sharing, checks PDF header and
+EOF, then atomically renames it while holding that handle. Timestamp, UUID, and
+sanitized document name/job ID (when spooler metadata is available) distinguish
+jobs. Structural/vector validation runs in the bounded processor before printing.
+Spooler events pause later jobs until pickup and resume only jobs the broker held.
+An observed overlap or inability to pause is persisted in Job status. **A fixed
+file port cannot guarantee lossless unattended bursts if the watcher is stopped,
+the spooler outruns notification handling, or an application bypasses normal
+spooling.** Do not print while signed out or the watcher is stopped. On an overlap
+warning, reconcile source documents and output before reprinting. Unique Inbox
+PDFs remain the reliable fallback for applications that fail this qualification.
+
+Upgrade removes the old HKCU worker autostart and recognized owned scheduled
+tasks. Old virtual installations fall back to PDF mode without elevation; enabling
+the optional component replaces the owned Imagesetter/NUL or LPR queue, provided
+it has no outstanding jobs. Dedicated unused ports are removed; shared `NUL:`
+is left alone. Foreign queues are never replaced. A declined/blocked setup is
+reported plainly and leaves PDF mode usable. The old Program Files provisioning
+package is not executed by the new app; any historical installation files remain.
 
 The expected workload is ten pages or fewer per job, including consecutive jobs.
 Printing has a 384 MiB combined process-tree cap; PDF preparation retains its
@@ -171,23 +185,28 @@ on exit, and are retried by terminal-job recovery if locked. Printer failures us
 (configuration 6, vector/spool 7, timeout 8, unexpected termination 9) and an 8 KiB sanitized local
 `%LOCALAPPDATA%\VoucherReorder\print-error.log`; no document output is retained.
 
-PDF Inbox ingestion waits for stable size/time, a complete parseable PDF and an
-exclusive Windows read handle. Source PDFs are **not deleted or moved**. Persistent
-receipts prevent old Inbox files from printing again after restart/queue expiry.
-Use new filenames for new jobs; leave unrelated files outside this dedicated folder.
-Copies in the private queue are capped at 100 MiB/job and 100 waiting jobs, with a 512 MiB aggregate input limit. They are
-removed after sending, failure or review; waiting copies/status expire after 24
-hours while the app runs or at next start. Inbox originals remain until you delete
-them. Deletion is not secure erasure; Windows spooling and backups are separate.
+Inbox pickup is event-driven and controlled by `settings.watch_inbox`. Incomplete
+or locked files stay in the watched folder until another change notification;
+**Retry pickup** explicitly wakes the broker if an application closes without a
+usable final notification. A partial file never launches the PDF processor.
+Legacy Inbox receipts are honored so an upgrade does not reprint old originals.
+New arrivals are moved, not copied; each arrival is a distinct job, even with
+identical content. Manual submissions retain the legacy content deduplication.
 
-Duplicate identical job payloads within 24 hours are suppressed, including deliberate
-identical reprints. Use a fresh QuickBooks output after reconciling paper and queues.
-For printer output, a “sent” status means handed to Windows, not proof of physical printing.
-For PDF output, it reports the saved file path. There is
-no exactly-once guarantee across spooler/device/power failures. Settings provides
-job status, cancellation and release of **unattempted held** jobs only. Raw financial
-contents and parser errors are not logged. Never upload real checks or spool files
-to this public repository.
+Queue limits are 100 MiB/job, 100 waiting jobs, and 512 MiB of waiting inputs.
+Successful input/output scratch files are deleted. Failed or uncertain jobs move
+the input to `%LOCALAPPDATA%\VoucherReorder\Needs attention\<unique job>` with
+`reason.json`. Job status lists them and offers **Open folder** and **Retry** using
+current settings. Failed documents remain until explicitly retried or removed;
+they are not expired automatically. Verify physical output before retrying an
+uncertain print, since retry can duplicate it. Waiting/held jobs and successful
+status records retain the existing 24-hour expiry at processor startup.
+
+“Sent” means handed to Windows, not proof of physical printing. No exactly-once
+guarantee is possible across spooler/device/power failures. Deletion is not secure
+erasure; Windows spooling and backups are separate. Filenames and spool document
+titles can contain private information: keep job folders and diagnostics local.
+Never upload real checks or spool files to this public repository.
 
 ## Build and test
 
@@ -204,9 +223,9 @@ python3 scripts/build_windows.py
 Outputs are in `dist/`: the installer, matching `-sources.zip`, and `SHA256SUMS.txt`.
 The script packages official x64 Windows binaries from SHA-256-pinned downloads in
 `packaging/dependencies.json`; it does not claim to cross-compile those upstream
-programs. `--stage-only` prepares files; `--version 0.2.2` overrides the packaging
+programs. `--stage-only` prepares files; `--version 0.2.3` overrides the packaging
 version for upgrade tests (no tag/release is created). Installations need no network
-in PDF mode. Virtual setup may download Microsoft's signature-checked C++ runtime.
+in PDF mode. Virtual setup uses the already available Windows PDF driver; policy or missing-driver failures fall back to PDF mode.
 
 [CI](.github/workflows/build.yml) runs Linux tests; builds on `windows-2022`;
 checks all 36 source/output mappings, simulated 100/150/200% UI scaling and small
@@ -225,6 +244,6 @@ retain their licenses: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Always 
 the matching source archive alongside the installer.
 
 Sources: [Microsoft driver installation permissions](https://learn.microsoft.com/en-us/windows-hardware/drivers/print/point-and-print-with-packages),
-[Windows spool job reads](https://learn.microsoft.com/en-us/windows/win32/printdocs/readprinter),
+[Windows printer change notifications](https://learn.microsoft.com/en-us/windows/win32/printdocs/findfirstprinterchangenotification),
 [PDFium printing API](https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/8149/public/fpdfview.h),
 [Ghostscript vector output](https://ghostscript.readthedocs.io/en/latest/VectorDevices.html).

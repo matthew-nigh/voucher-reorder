@@ -151,8 +151,6 @@ def main():
         )
         prefix = "/" if os.name == "nt" else "-"
         tool_versions["NSIS"] = subprocess.check_output([compiler, prefix + "VERSION"], text=True).strip()
-        if os.name == "nt":
-            tool_versions["MSVC"] = subprocess.run(["cl"], capture_output=True, text=True).stderr.strip()
     (stage / "BUILD_INFO.json").write_text(
         json.dumps(
             {"version": version, "revision": revision, "dependencies": dependencies, "tools": tool_versions},
@@ -170,6 +168,8 @@ def main():
     )
     dist = ROOT / "dist"
     dist.mkdir(exist_ok=True)
+    for obsolete in dist.glob("VoucherReorder-*-Provisioning.exe"):
+        obsolete.unlink()
     # Source distribution uses an explicit allowlist: no local user data, credentials, or downloads outside pins.
     with zipfile.ZipFile(
         dist / f"VoucherReorder-{version}-sources.zip", "w", zipfile.ZIP_DEFLATED
@@ -185,43 +185,6 @@ def main():
                     archive.write(path, "voucher-reorder/" + path.relative_to(ROOT).as_posix())
         archive.write(stage / "BUILD_INFO.json", "BUILD_INFO.json")
     if not args.stage_only:
-        if os.name == "nt":
-            helper = ROOT / "build/Provision.exe"
-            subprocess.run(
-                [
-                    "cl",
-                    "/nologo",
-                    "/O2",
-                    "/MT",
-                    "/std:c11",
-                    str(ROOT / "packaging/provision.c"),
-                    f"/Fe:{helper}",
-                    "/link",
-                    "/SUBSYSTEM:WINDOWS",
-                    "shell32.lib",
-                    "advapi32.lib",
-                    "user32.lib",
-                ],
-                cwd=helper.parent,
-                check=True,
-            )
-            subprocess.run(
-                [
-                    compiler,
-                    f"/DHELPER={helper}",
-                    f"/DVERSION={version}",
-                    f"/DOUTPUT={dist / f'VoucherReorder-{version}-Provisioning.exe'}",
-                    str(ROOT / "packaging/provision.nsi"),
-                ],
-                check=True,
-            )
-            provisioning = stage / "provisioning"
-            provisioning.mkdir()
-            package = dist / f"VoucherReorder-{version}-Provisioning.exe"
-            shutil.copy2(package, provisioning / "Setup.exe")
-            (provisioning / "package.json").write_text(
-                json.dumps({"version": version, "sha256": hashlib.sha256(package.read_bytes()).hexdigest()})
-            )
         installer = dist / f"VoucherReorder-{version}-Setup.exe"
         subprocess.run(
             [
@@ -233,8 +196,11 @@ def main():
             check=True,
         )
     with (dist / "SHA256SUMS.txt").open("w") as output:
-        for path in sorted(dist.iterdir()):
-            if path.suffix in (".zip", ".exe"):
+        for path in (
+            dist / f"VoucherReorder-{version}-Setup.exe",
+            dist / f"VoucherReorder-{version}-sources.zip",
+        ):
+            if path.exists():
                 with path.open("rb") as data:
                     output.write(f"{hashlib.file_digest(data, 'sha256').hexdigest()}  {path.name}\n")
     print(f"Windows package ready: {dist}")

@@ -1,5 +1,12 @@
 # Next steps for Matthew
 
+> Historical notes below describe earlier releases. v0.2.3 replaces retained RAW
+> spooling and the elevated provisioning package with a built-in PDF fixed-port
+> clone and native event broker. Inbox arrivals now move to unique jobs; failed
+> inputs remain in Needs attention for explicit retry. See README.md and
+> TESTING_ON_WINDOWS.md for current behavior and fixed-port concurrency limits.
+
+
 ## Done in this round
 
 - A per-user x64 app for Windows 10/11, with HKCU startup/uninstall entries and no
