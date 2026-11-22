@@ -3,7 +3,6 @@
 import json
 import os
 import tempfile
-import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -13,7 +12,7 @@ from .queue import MAX_JOB
 
 
 @contextmanager
-def exclusive_read(path):
+def exclusive_read(path, movable=False):
     if os.name == "nt":
         import ctypes as c
         import msvcrt
@@ -22,7 +21,7 @@ def exclusive_read(path):
         kernel = c.WinDLL("kernel32", use_last_error=True)
         kernel.CreateFileW.argtypes = [w.LPCWSTR, w.DWORD, w.DWORD, c.c_void_p, w.DWORD, w.DWORD, w.HANDLE]
         kernel.CreateFileW.restype = w.HANDLE
-        handle = kernel.CreateFileW(str(path), 0x80000000, 0, None, 3, 128, None)
+        handle = kernel.CreateFileW(str(path), 0x80000000, 4 if movable else 0, None, 3, 128, None)
         if handle == w.HANDLE(-1).value:
             raise OSError(c.get_last_error(), "PDF is still open or unavailable")
         try:
@@ -66,47 +65,19 @@ class Inbox:
         self.folder = root / "Inbox"
         self.folder.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.receipts = root / "inbox-receipts.json"
-        self.rejected = {}
-
-        self.seen = json.loads(self.receipts.read_text()) if self.receipts.exists() else {}
-        self.stable = {}
 
     def scan(self, queue, settings, now=None):
-        now = time.monotonic() if now is None else now
         warning = None
-        for path in sorted(self.folder.glob("*.pdf")):
+        seen = json.loads(self.receipts.read_text()) if self.receipts.exists() else {}
+        for path in sorted(self.folder.glob("*")):
+            if path.suffix.lower() != ".pdf":
+                continue
             try:
                 stat = path.stat()
-                signature = [stat.st_size, stat.st_mtime_ns]
-                key = path.name
-                if self.rejected.get(key) == signature:
-                    warning = "Invalid PDF in Inbox. Flatten layers or export a new PDF."
+                # Legacy originals must never be reprinted by an upgrade.
+                if seen.get(path.name) == [stat.st_size, stat.st_mtime_ns]:
                     continue
-                if self.seen.get(key) == signature:
-                    continue
-                prior, since = self.stable.get(key, (None, now))
-                if prior != signature:
-                    self.stable[key] = (signature, now)
-                    continue
-                if now - since < 3:
-                    continue
-                try:
-                    payload = read_pdf(path)
-                except ValueError:
-                    self.rejected[key] = signature
-                    warning = "Invalid PDF in Inbox. Flatten layers or export a new PDF."
-                    continue
-                try:
-                    queue.accept_bytes(payload, settings, source=(key, signature))
-                except OSError:
-                    warning = "Cannot save the Inbox receipt or job. Check storage."
-                    continue
-                self.seen[key] = signature
-            except OSError:
-                continue  # still being written/locked; do not enqueue a partial snapshot
-            except ValueError:
-                warning = "A PDF in Inbox is incomplete, invalid, or waiting for queue space. Open Settings."
-        # Preserve receipts while originals exist: expiry must never reprint an old Inbox PDF.
-        existing = {p.name for p in self.folder.glob("*.pdf")}
-        self.seen = {k: v for k, v in self.seen.items() if k in existing}
+                queue.accept_file(path, settings)
+            except (OSError, ValueError):
+                warning = "Inbox PDF is open, incomplete or unavailable. Finish saving; use Retry pickup in Job status if needed."
         return warning

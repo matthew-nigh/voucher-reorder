@@ -68,7 +68,7 @@ function Start-ModeSetup($action) {
         $modeLabel.Text = if ($action -eq 'virtual') { 'Setting up the Voucher Reorder printer...' } else { 'Switching to PDF handoff...' }
         $enableVirtual.Enabled = $false; $switchPdf.Enabled = $false
         $setupProgress.Visible = $true
-        # No -Wait: only the existing provisioning helper requests elevation.
+        # No -Wait: Windows PowerShell requests the one optional elevation.
         if ($SmokeTest) {
             $script:setupProcess = Start-Process -FilePath $python -ArgumentList @('-c', '"import time; time.sleep(1)"') -WindowStyle Hidden -PassThru
             return
@@ -286,7 +286,46 @@ $null = Button 'Print a PDF...' 415 600 220 {
         }
     } catch { Show-Error $_.Exception.Message }
 }
-$null = Button 'Job status' 15 645 150 { $text=(& $python $app status | Out-String); $null=[Windows.Forms.MessageBox]::Show($text,'Voucher Reorder') }
+$null = Button 'Job status' 15 645 150 {
+    $dialog=New-Object Windows.Forms.Form
+    $dialog.Text='Job status'; $dialog.Size=New-Object Drawing.Size(780,510)
+    $dialog.StartPosition='CenterParent'
+    $summary=New-Object Windows.Forms.TextBox
+    $summary.Multiline=$true; $summary.ReadOnly=$true; $summary.ScrollBars='Vertical'
+    $summary.SetBounds(15,15,730,180)
+    $summary.Text=(& $python $app status | Out-String)
+    $dialog.Controls.Add($summary)
+    $list=New-Object Windows.Forms.ListBox
+    $list.SetBounds(15,210,730,180)
+    $failures=@(Get-ChildItem (Join-Path $store 'jobs\*\state.json') -ErrorAction SilentlyContinue | ForEach-Object {
+        $job=Get-Content $_.FullName -Raw | ConvertFrom-Json
+        if ($job.state -in @('failed','review')) {
+            [pscustomobject]@{Id=$_.Directory.Name; Label="$($job.document) - $($job.state): $($job.message)"}
+        }
+    })
+    $list.DisplayMember='Label'
+    foreach ($failure in $failures) { $null=$list.Items.Add($failure) }
+    $dialog.Controls.Add($list)
+    $open=New-Object Windows.Forms.Button; $open.Text='Open folder'; $open.SetBounds(15,410,140,30)
+    $open.Add_Click({
+        $folder=Join-Path $store 'Needs attention'
+        [IO.Directory]::CreateDirectory($folder) | Out-Null
+        Start-Process explorer.exe -ArgumentList ('"'+$folder+'"')
+    }); $dialog.Controls.Add($open)
+    $retry=New-Object Windows.Forms.Button; $retry.Text='Retry'; $retry.SetBounds(170,410,140,30)
+    $retry.Add_Click({
+        if ($null -eq $list.SelectedItem) { return }
+        $answer=[Windows.Forms.MessageBox]::Show('Check the physical output and printer queue first. Retry can print a duplicate. Retry this job with current settings?','Retry','YesNo','Warning')
+        if ($answer -ne 'Yes') { return }
+        & $python $app retry --file $list.SelectedItem.Id
+        if ($LASTEXITCODE -eq 0) { $list.Items.Remove($list.SelectedItem) }
+        $summary.Text=(& $python $app status | Out-String)
+    }); $dialog.Controls.Add($retry)
+    $pickup=New-Object Windows.Forms.Button; $pickup.Text='Retry pickup'; $pickup.SetBounds(325,410,140,30)
+    $pickup.Add_Click({ & $python $app register }); $dialog.Controls.Add($pickup)
+    $null=$dialog.ShowDialog($form)
+    $dialog.Dispose()
+}
 $null = Button 'Resume held jobs' 180 645 220 {
     if ([Windows.Forms.MessageBox]::Show('Resume jobs held during an update? They use the printer and alignment settings saved when received. Confirm the correct paper is loaded.','Resume held jobs','YesNo') -eq 'Yes') { & $python $app resume }
 }

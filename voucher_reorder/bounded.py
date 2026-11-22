@@ -167,8 +167,6 @@ def _execute(operation, path, settings=None, scratch=None):
     budget_loaded = False
     try:
         while child.poll() is None:
-            if operation == "receive" and ((path / "stop").exists() or (path / "maintenance.json").exists()):
-                raise ValueError("Spool receipt interrupted.")
             if time.monotonic() >= deadline:
                 raise ValueError(ERRORS[8]) if operation == "print" else PdfError("deadline")
             if operation == "prepare" and any(p.stat().st_size > MAX_OUTPUT for p in path.glob("*.pdf")):
@@ -213,11 +211,6 @@ def main(operation, path, config):
     from .windows import convert, forward
 
     settings = Settings(**json.loads(config))
-    if operation == "receive":
-        from .spool import receive_one
-
-        receive_one(path, settings)
-        return 0
     if operation == "inspect":
         reader = PdfReader(path, strict=True)
         if reader.is_encrypted:

@@ -1,71 +1,138 @@
-"""Consume retained RAW jobs through local Windows spooler RPC, under the desktop user's token."""
+"""Event-triggered spool metadata and best-effort serialization of fixed-port jobs.
+
+No RAW payload access, RPC spool-file reads, subprocesses, or periodic probes.
+"""
 
 import ctypes as c
-import hashlib
 import json
 from ctypes import wintypes as w
 
 from .config import atomic_json
-from .queue import MAX_JOB, Queue
-from .spool_poll import poll
 
 
-def check(ok):
-    if not ok:
-        raise c.WinError(c.get_last_error())
+class Guard:
+    def __init__(self, root):
+        self.root = root
+        self.path = root / "printer-pickup.json"
+        self.state = json.loads(self.path.read_text()) if self.path.exists() else {"active": None, "held": []}
+        self.document = self.state.get("document")
 
+    def snapshot(self):
+        from .spool_metadata import JobInfo, PrinterInfo, _checked, _owner_sid
 
-def retained_candidate(quarantine):
-    excluded = json.loads(quarantine.read_text()) if quarantine.exists() else []
-    candidate = poll(excluded)
-    if candidate is None and excluded:
-        raise ValueError("Retained Windows job needs review.")
-    return candidate
-
-
-def receive_one(root, settings):
-    quarantine = root / "spool-review.json"
-    candidate = retained_candidate(quarantine)
-    if candidate is None:
-        return
-    job_id = candidate["id"]
-    key = candidate["key"]
-    if type(job_id) is not int or not 0 < job_id <= 0xFFFFFFFF:
-        raise ValueError("Invalid Windows spool job.")
-    api = c.WinDLL("winspool.drv", use_last_error=True)
-    api.OpenPrinterW.argtypes = [w.LPWSTR, c.POINTER(w.HANDLE), w.LPVOID]
-    api.ReadPrinter.argtypes = [w.HANDLE, w.LPVOID, w.DWORD, c.POINTER(w.DWORD)]
-    api.ClosePrinter.argtypes = [w.HANDLE]
-    api.SetJobW.argtypes = [w.HANDLE, w.DWORD, w.DWORD, w.LPVOID, w.DWORD]
-    # A killed/blocked read must never monopolize the next worker iteration.
-    blocked = json.loads(quarantine.read_text()) if quarantine.exists() else []
-    atomic_json(quarantine, [*blocked, key])
-    handle = w.HANDLE()
-    check(api.OpenPrinterW(f"Voucher Reorder, Job {job_id}", c.byref(handle), None))
-    try:
-        payload = bytearray()
-        buf = c.create_string_buffer(65536)
-        count = w.DWORD()
-        while True:
-            check(api.ReadPrinter(handle, buf, len(buf), c.byref(count)))
-            if not count.value:
-                break
-            if len(payload) + count.value > MAX_JOB:
-                raise ValueError("Retained job exceeds the size limit.")
-            payload.extend(buf.raw[: count.value])
-        Queue(root / "jobs").accept_bytes(
-            payload, settings, "ps", source=("spool:" + key, hashlib.sha256(payload).hexdigest())
-        )
-        # Keep the job handle open until the durable copy is acknowledged.
-        printer = w.HANDLE()
-        check(api.OpenPrinterW("Voucher Reorder", c.byref(printer), None))
+        api = c.WinDLL("winspool.drv", use_last_error=True)
+        api.OpenPrinterW.argtypes = [w.LPWSTR, c.POINTER(w.HANDLE), w.LPVOID]
+        api.ClosePrinter.argtypes = [w.HANDLE]
+        api.GetPrinterW.argtypes = [w.HANDLE, w.DWORD, w.LPVOID, w.DWORD, c.POINTER(w.DWORD)]
+        api.EnumJobsW.argtypes = [
+            w.HANDLE,
+            w.DWORD,
+            w.DWORD,
+            w.DWORD,
+            w.LPVOID,
+            w.DWORD,
+            c.POINTER(w.DWORD),
+            c.POINTER(w.DWORD),
+        ]
+        handle = w.HANDLE()
+        _checked(api.OpenPrinterW("Voucher Reorder", c.byref(handle), None))
         try:
-            check(api.SetJobW(printer, job_id, 0, None, 5))  # JOB_CONTROL_DELETE
+
+            def buffer(call):
+                size = w.DWORD()
+                if not call(None, 0, c.byref(size)) and c.get_last_error() != 122:
+                    _checked(False)
+                if size.value > 16 * 1024**2:
+                    raise ValueError("Printer metadata exceeds limit")
+                result = c.create_string_buffer(max(1, size.value))
+                _checked(call(result, len(result), c.byref(size)))
+                return result
+
+            metadata = buffer(lambda p, n, s: api.GetPrinterW(handle, 2, p, n, s))
+            printer = c.cast(metadata, c.POINTER(PrinterInfo)).contents
+            if (
+                printer.comment != f"VoucherReorder owner={_owner_sid()}"
+                or printer.driver != "Microsoft Print To PDF"
+                or printer.port.casefold() != str(self.root / "Incoming" / "job.pdf").casefold()
+            ):
+                raise ValueError("Reconfigure the old or foreign virtual printer in Settings")
+            count = w.DWORD()
+            data = buffer(lambda p, n, s: api.EnumJobsW(handle, 0, 0xFFFFFFFF, 1, p, n, s, c.byref(count)))
+            if count.value * c.sizeof(JobInfo) > len(data):
+                raise ValueError("Invalid printer metadata")
+            jobs = []
+            for j in c.cast(data, c.POINTER(JobInfo))[: count.value]:
+                t = j.submitted
+                key = f"{j.id}-" + "-".join(
+                    str(getattr(t, a)) for a in ("year", "month", "day", "hour", "minute", "second", "ms")
+                )
+                jobs.append(
+                    {
+                        "id": j.id,
+                        "key": key,
+                        "status": j.status,
+                        "document": j.document or "job",
+                        "position": j.position,
+                    }
+                )
+            return sorted(jobs, key=lambda j: (j["position"], j["id"]))
         finally:
-            api.ClosePrinter(printer)
-        if blocked:
-            atomic_json(quarantine, blocked)
-        else:
-            quarantine.unlink()
-    finally:
-        api.ClosePrinter(handle)
+            api.ClosePrinter(handle)
+
+    def control(self, job, command):
+        from .spool_metadata import _checked
+
+        api = c.WinDLL("winspool.drv", use_last_error=True)
+        api.OpenPrinterW.argtypes = [w.LPWSTR, c.POINTER(w.HANDLE), w.LPVOID]
+        api.ClosePrinter.argtypes = [w.HANDLE]
+        api.SetJobW.argtypes = [w.HANDLE, w.DWORD, w.DWORD, w.LPVOID, w.DWORD]
+        handle = w.HANDLE()
+        _checked(api.OpenPrinterW("Voucher Reorder", c.byref(handle), None))
+        try:
+            _checked(api.SetJobW(handle, job["id"], 0, None, command))
+        finally:
+            api.ClosePrinter(handle)
+
+    def changed(self):
+        jobs = self.snapshot()
+        active = self.state["active"]
+        held = set(self.state["held"])
+        held.intersection_update(j["key"] for j in jobs)
+        if active is None and jobs:
+            active = jobs[0]["key"]
+            self.document = f"{jobs[0]['document']}-{jobs[0]['id']}"
+        warning = None
+        for job in jobs:
+            if job["key"] == active or job["key"] in held:
+                continue
+            if job["status"] & 0x10:
+                warning = "Overlapping fixed-port jobs detected. A PDF may have been overwritten; compare Job status with the source documents before reprinting."
+            try:
+                if not job["status"] & 1:
+                    self.control(job, 1)  # JOB_CONTROL_PAUSE, only this user's jobs
+                    held.add(job["key"])
+            except OSError:
+                warning = "Could not hold a second fixed-port job. Stop sending jobs and compare source documents with Job status; a PDF may have been overwritten."
+        self.state.update(active=active, held=sorted(held), document=self.document)
+        atomic_json(self.path, self.state)
+        if warning:
+            atomic_json(self.root / "printer-warning.json", {"error": warning})
+        return warning
+
+    def picked_up(self):
+        self.state.update(active=None, document=None)
+        self.document = None
+        # Resume only one job we ourselves held, after the fixed path is free.
+        for job in self.snapshot():
+            if job["key"] in self.state["held"]:
+                self.state.update(active=job["key"], document=f"{job['document']}-{job['id']}")
+                self.document = self.state["document"]
+                atomic_json(self.path, self.state)
+                self.control(job, 2)
+                self.state["held"].remove(job["key"])
+                break
+        atomic_json(self.path, self.state)
+
+    def close(self):
+        # Held jobs stay held on shutdown: resuming without a watcher could overwrite job.pdf.
+        pass

@@ -91,7 +91,7 @@ def install(root: Path, candidate: Path, data: Path, integrate, timeout=150):
         (data / "stop").touch()
         try:
             with ExitStack() as stack:
-                for name in ("ui", "worker", "queue"):
+                for name in ("ui", "worker", "processor", "queue"):
                     stack.enter_context(FileLock(data / f"{name}.lock", timeout=timeout))
                 queue = Queue(data / "jobs")
                 for job in queue.jobs():
@@ -131,7 +131,7 @@ def prepare_uninstall(data, timeout=150):
     (data / "stop").touch()
     try:
         with ExitStack() as stack:
-            for name in ("ui", "worker", "queue"):
+            for name in ("ui", "worker", "processor", "queue"):
                 stack.enter_context(FileLock(data / f"{name}.lock", timeout=timeout))
             queue = Queue(data / "jobs")
             queue.hold_waiting()

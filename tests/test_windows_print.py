@@ -79,7 +79,7 @@ def test_print_failure_writes_sanitized_local_diagnostic(tmp_path, monkeypatch):
     assert "OutOfMemoryException" in log and "secret account" not in log
 
 
-def test_provisioning_mismatch_uses_pdf_without_blocking_upgrade(tmp_path):
+def test_old_printer_migration_uses_pdf_without_blocking_upgrade(tmp_path):
     from voucher_reorder.config import Settings, load, save
     from voucher_reorder.provisioning import check_version
 
@@ -92,7 +92,8 @@ def test_provisioning_mismatch_uses_pdf_without_blocking_upgrade(tmp_path):
     assert load(data / "settings.json").printer == "FAKE"
     assert "one prompt" in (data / "mode-status.txt").read_text()
     save(data / "settings.json", Settings(mode="virtual"))
-    assert check_version(data, "0.2.0", protected)
+    (data / "fixed-port-installed").touch()
+    assert check_version(data, "0.2.3", protected)
     assert load(data / "settings.json").mode == "virtual"
 
 

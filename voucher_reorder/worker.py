@@ -1,22 +1,20 @@
 """Both input modes share one per-user, serial, crash-aware print worker."""
 
-import threading
 import time
 
 from .bounded import ERRORS, execute
 from .config import atomic_json, data_dir, from_dict, load
-from .inbox import Inbox
 from .locking import FileLock
 from .pdf_errors import MESSAGES as PDF_MESSAGES
 from .printing import save_pdf
 from .queue import Queue
-from .windows import convert, forward, message
+from .windows import convert, forward
 
 
 def process_one(queue, settings, converter=convert, sender=forward):
     if not settings.output_ready or (queue.root.parent / "maintenance.json").exists():
         return
-    with queue.lock, queue.transaction():
+    with queue.lock:
         for job in queue.jobs():
             state = queue.read(job)
             if state["state"] != "queued":
@@ -24,11 +22,14 @@ def process_one(queue, settings, converter=convert, sender=forward):
             # Existing alpha jobs have no immutable settings snapshot.
             config = from_dict(state["settings"]) if "settings" in state else settings
             try:
-                queue.reconcile(job, state)
+                with queue.transaction():
+                    if queue.read(job)["state"] != "queued":
+                        continue
+                    queue.reconcile(job, state)
+                    queue.update(job, "converting")
             except OSError:
                 continue  # Keep this job queued until its receipt is durable.
             try:
-                queue.update(job, "converting")
                 if state.get("kind", "ps") == "ps" and converter is not convert:
                     converter(job.parent / "input.ps", job.parent / "input.pdf")
                 execute("prepare", job.parent, config)
@@ -75,62 +76,30 @@ def process_one(queue, settings, converter=convert, sender=forward):
 
 def serve():
     root = data_dir()
-    root.mkdir(parents=True, exist_ok=True, mode=0o700)
     try:
-        with FileLock(root / "worker.lock"):
-            if (root / "maintenance.json").exists():
-                return
-            _serve(root)
+        with FileLock(root / "processor.lock"):
+            if not (root / "maintenance.json").exists():
+                _serve(root)
     except TimeoutError:
         return
 
 
 def _serve(root):
-    queue = Queue(root / "jobs", recover=True)
-    inbox = Inbox(root)
-    stop = root / "stop"
-    stop.unlink(missing_ok=True)
-    try:
-        while not stop.exists() and not (root / "maintenance.json").exists():
-            warning = None
-            try:
-                settings = load(root / "settings.json")
-                virtual_ready = False
-                if settings.mode == "virtual" and settings.output_ready:
-                    try:
-                        from .spool import retained_candidate
+    """Drain durable jobs once, then exit. The broker owns all notifications."""
+    from .watcher import stopped
 
-                        # Idle polling stays in-process; isolate only payload reads.
-                        if retained_candidate(root / "spool-review.json") is not None:
-                            execute("receive", root, settings)
-                        virtual_ready = True
-                    except (OSError, ValueError):
-                        warning = "Virtual job retained or printer unavailable. Check the Windows queue and provisioning."
-                if settings.output_ready and settings.watch_inbox:
-                    try:
-                        warning = inbox.scan(queue, settings) or warning
-                    except (ValueError, OSError):
-                        warning = "Inbox storage needs attention."
-                alert = process_one(queue, settings)
-                if alert:
-                    threading.Thread(target=message, args=(alert,), daemon=True).start()
-                with queue.lock, queue.transaction():
-                    warning = queue.expire() or warning
-                atomic_json(
-                    root / "worker.json",
-                    {
-                        "heartbeat": time.time(),
-                        "mode": settings.mode,
-                        "virtual_ready": virtual_ready,
-                        "error": warning,
-                    },
-                )
-            except Exception:
-                atomic_json(
-                    root / "worker.json",
-                    {"heartbeat": time.time(), "error": "Settings or queue need attention."},
-                )
-            time.sleep(1)
+    queue = Queue(root / "jobs", recover=True)
+    settings = load(root / "settings.json")
+    attempted = set()
+    warning = None
+    try:
+        while settings.output_ready and not stopped(root):
+            jobs = [j for j in queue.jobs() if queue.read(j)["state"] == "queued" and j not in attempted]
+            if not jobs:
+                break
+            attempted.add(jobs[0])
+            warning = process_one(queue, settings) or warning
+    except Exception:
+        warning = "Settings or queue need attention."
     finally:
-        (root / "worker.json").unlink(missing_ok=True)
-        stop.unlink(missing_ok=True)
+        atomic_json(root / "worker.json", {"updated": time.time(), "state": "idle", "error": warning})

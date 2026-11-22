@@ -67,9 +67,10 @@ class Settings:
         if not self.output_folder or not folder.is_absolute():
             raise ValueError("Choose an absolute folder for reordered PDFs.")
         folder = folder.resolve()
-        inbox = ((root or data_dir()) / "Inbox").resolve()
-        if folder == inbox or inbox in folder.parents:
-            raise ValueError("Save reordered PDFs outside the Inbox and its subfolders.")
+        for name in ("Inbox", "Incoming", "jobs", "Needs attention"):
+            private = ((root or data_dir()) / name).resolve()
+            if folder == private or private in folder.parents:
+                raise ValueError("Save reordered PDFs outside the Inbox and other private job folders.")
         return folder
 
     def edges(self, height: float) -> tuple[float, float, float, float]:

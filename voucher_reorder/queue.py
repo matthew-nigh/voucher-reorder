@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 import shutil
 import threading
 import time
@@ -26,6 +27,12 @@ class Queue:
         if recover:
             with self.transaction():
                 for job in self.jobs():
+                    if self.read(job)["state"] == "receiving":
+                        if (job.parent / "input.pdf").exists():
+                            self.update(job, "queued", "Recovered completed pickup")
+                        else:
+                            shutil.rmtree(job.parent)
+                            continue
                     if self.read(job)["state"] in ("converting", "printing"):
                         self.update(
                             job,
@@ -52,8 +59,87 @@ class Queue:
         data = self.read(job)
         data.update(state=state, message=message)
         atomic_json(job, data)
-        if state in TERMINAL:
+        if state in {"failed", "review"}:
+            self.preserve_failure(job)
+        elif state in TERMINAL:
             self.clean_payload(job)
+
+    def preserve_failure(self, job):
+        state = self.read(job)
+        folder = self.root.parent / "Needs attention" / job.parent.name
+        folder.mkdir(parents=True, exist_ok=True)
+        for name in ("input.pdf", "input.ps"):
+            source = job.parent / name
+            if source.exists():
+                source.replace(folder / name)
+        atomic_json(folder / "reason.json", state)
+        self.clean_payload(job)
+
+    def retry(self, identifier, settings):
+        # Retry requires an explicit user action, especially after uncertain printing.
+        with self.lock, self.transaction():
+            job = next((j for j in self.jobs() if j.parent.name == identifier), None)
+            if job is None or self.read(job)["state"] not in {"failed", "review"}:
+                raise ValueError("Select a failed job to retry.")
+            folder = self.root.parent / "Needs attention" / identifier
+            source = folder / ("input.ps" if self.read(job).get("kind") == "ps" else "input.pdf")
+            source.replace(job.parent / source.name)
+            state = self.read(job)
+            state.update(settings=asdict(settings), state="queued", message="Retry requested by user")
+            atomic_json(job, state)
+            shutil.rmtree(folder)
+
+    def accept_file(self, source, settings, document=None):
+        """Claim a completed arrival by rename while denying other readers/writers.
+
+        Parsing happens later in the bounded processor, never in the broker.
+        Repeated identical arrivals are distinct jobs; legacy byte submissions retain deduplication.
+        """
+        from .inbox import exclusive_read
+
+        if source.is_symlink():
+            raise ValueError("Watched PDFs must be regular files.")
+        with (
+            self.lock,
+            FileLock(self.root.parent / "queue.lock"),
+            exclusive_read(source, movable=True) as stream,
+        ):
+            stream.seek(0, 2)
+            size = stream.tell()
+            if not 0 < size <= MAX_JOB:
+                raise ValueError("PDF is empty or exceeds 100 MiB; check the watched folder.")
+            stream.seek(0)
+            header = stream.read(5)
+            stream.seek(max(0, size - 2048))
+            if header != b"%PDF-" or b"%%EOF" not in stream.read(2048):
+                raise ValueError("PDF is incomplete; finish saving, then use Retry pickup in Job status.")
+            if sum(self.read(j)["state"] in {"queued", "held"} for j in self.jobs()) >= 100:
+                raise ValueError("The waiting queue is full. Open Job status.")
+            total = sum(p.stat().st_size for p in self.root.glob("*/input.*"))
+            if total + size > 512 * 1024**2 or shutil.disk_usage(self.root).free < 256 * 1024**2:
+                raise ValueError("Insufficient queue space.")
+            title = re.sub(r"[^a-zA-Z0-9 _-]", "_", document or source.stem)[:60].strip() or "job"
+            folder = self.root / f"{time.time_ns()}-{uuid.uuid4().hex}-{title}"
+            folder.mkdir(mode=0o700)
+            # Write recoverable admission metadata BEFORE the atomic rename.
+            state = {
+                "state": "receiving",
+                "created": time.time(),
+                "digest": "",
+                "kind": "pdf",
+                "settings": asdict(settings),
+                "message": "Claiming PDF",
+                "document": title,
+            }
+            atomic_json(folder / "state.json", state)
+            try:
+                source.rename(folder / "input.pdf")
+            except BaseException:
+                shutil.rmtree(folder)
+                raise
+            state.update(state="queued", message="Waiting to print")
+            atomic_json(folder / "state.json", state)
+            return folder / "state.json"
 
     def clean_payload(self, job):
         for name in ("input.ps", "input.pdf", "output.pdf", "page.bmp"):
@@ -137,7 +223,9 @@ class Queue:
             state = self.read(job)
             try:
                 self.reconcile(job, state)
-                if state["state"] in TERMINAL and not self.clean_payload(job):
+                if state["state"] in {"failed", "review"}:
+                    self.preserve_failure(job)
+                elif state["state"] in TERMINAL and not self.clean_payload(job):
                     warning = "Private job cleanup deferred. Close files and check storage."
                 elif time.time() - state["created"] > RETENTION:
                     shutil.rmtree(job.parent)

@@ -184,7 +184,21 @@ def register_user():
     executable = ROOT / "runtime/pythonw.exe"
     if not executable.exists():
         executable = Path(sys.executable)
-    command = subprocess.list2cmdline([str(executable), str(ROOT / "app.py"), "worker"])
+    command = subprocess.list2cmdline([str(executable), str(ROOT / "app.py"), "watch"])
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run") as key:
-        winreg.SetValueEx(key, "VoucherReorder", 0, winreg.REG_SZ, command)
-    subprocess.Popen([str(executable), str(ROOT / "app.py"), "worker"], **background_options())
+        try:
+            winreg.DeleteValue(key, "VoucherReorder")
+        except FileNotFoundError:
+            pass
+        winreg.SetValueEx(key, "VoucherReorderWatcher", 0, winreg.REG_SZ, command)
+    root = data_dir()
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "wake").touch()
+    from .locking import FileLock
+
+    try:
+        with FileLock(root / "worker.lock"):
+            pass
+    except TimeoutError:
+        return  # already waiting on the wake file: do not spawn a duplicate
+    subprocess.Popen([str(executable), str(ROOT / "app.py"), "watch"], **background_options())

@@ -3,10 +3,8 @@
 import argparse
 import json
 import tempfile
-import time
 from pathlib import Path
 
-from . import alignment
 from .config import data_dir, load, save
 from .locking import FileLock
 
@@ -20,10 +18,13 @@ def main():
         choices=[
             "settings",
             "worker",
+            "watch",
+            "process",
             "register",
             "alignment",
             "validate",
             "status",
+            "retry",
             "submit",
             "discard",
             "resume",
@@ -38,7 +39,11 @@ def main():
     config = args.config or root / "settings.json"
     if (root / "maintenance.json").exists() and args.command not in ("stop", "status"):
         raise ValueError("Setup is in progress or was interrupted. Run the installer again to finish.")
-    if args.command == "worker":
+    if args.command in ("worker", "watch"):
+        from .watcher import serve
+
+        serve()
+    elif args.command == "process":
         from .worker import serve
 
         serve()
@@ -60,6 +65,7 @@ def main():
         if not settings.output_ready:
             raise ValueError("Choose an output printer or a folder for reordered PDFs.")
     elif args.command in ("alignment", "submit"):
+        from . import alignment
         from .inbox import read_pdf
         from .queue import Queue
 
@@ -82,17 +88,23 @@ def main():
         from .windows import register_user
 
         register_user()
+    elif args.command == "retry":
+        from .queue import Queue
+        from .windows import register_user
+
+        if not args.file:
+            raise ValueError("Select a failed job to retry.")
+        Queue(root / "jobs").retry(str(args.file), load(config))
+        register_user()
     elif args.command == "status":
-        heartbeat = root / "worker.json"
-        health = json.loads(heartbeat.read_text()) if heartbeat.exists() else {}
-        active = time.time() - health.get("heartbeat", 0) < 15
-        settings = load(config)
-        print(
-            f"Mode: {settings.mode}. "
-            + ("Background app running." if active else "Background app stopped or busy.")
-        )
-        if health.get("error"):
-            print(health["error"])
+        print(f"Mode: {load(config).mode}. Job status is saved on disk.")
+        for name in ("watcher.json", "worker.json", "printer-warning.json"):
+            path = root / name
+            health = json.loads(path.read_text()) if path.exists() else {}
+            if health.get("state"):
+                print(f"{name.removesuffix('.json').capitalize()}: {health['state']} (last saved state).")
+            if health.get("error"):
+                print(health["error"])
         for state in sorted((root / "jobs").glob("*/state.json"))[-15:]:
             item = json.loads(state.read_text())
             print(item["state"] + ": " + item["message"])
@@ -111,6 +123,10 @@ def main():
                     queue.update(job, "discarded", "Canceled by user")
                 if args.command == "resume" and state == "held":
                     queue.update(job, "queued", "Released by user")
+        if args.command == "resume":
+            from .windows import register_user
+
+            register_user()
 
 
 if __name__ == "__main__":

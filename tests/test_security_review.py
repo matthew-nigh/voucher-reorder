@@ -55,27 +55,36 @@ def test_bad_inbox_pdf_does_not_block_valid_job(tmp_path):
     queue = Queue(tmp_path / "jobs")
     (inbox.folder / "00-FAKE-bad.pdf").write_bytes(b"%PDF-1.7\nnot a PDF\n%%EOF\n")
     (inbox.folder / "01-FAKE-good.pdf").write_bytes(sample().getvalue())
-    inbox.scan(queue, SETTINGS, now=0)
-    assert inbox.scan(queue, SETTINGS, now=4)  # warning, while continuing the scan
-    assert len(queue.jobs()) == 1
+    inbox.scan(queue, SETTINGS)
+    from voucher_reorder.worker import process_one
+
+    for _ in range(2):
+        process_one(queue, SETTINGS, sender=lambda *a: None)
+    assert [queue.read(j)["state"] for j in queue.jobs()] == ["failed", "sent"]
+    assert len(list((tmp_path / "Needs attention").glob("*/input.pdf"))) == 1
 
 
-def test_inbox_retries_receipt_after_transient_disk_failure(tmp_path, monkeypatch):
+def test_inbox_recovers_after_admission_commit_failure(tmp_path, monkeypatch):
+    from voucher_reorder import queue as queue_module
+
     inbox = Inbox(tmp_path)
     queue = Queue(tmp_path / "jobs")
     source = inbox.folder / "FAKE.pdf"
     source.write_bytes(sample().getvalue())
-    inbox.scan(queue, SETTINGS, now=0)
+    original = queue_module.atomic_json
 
-    def disk_full(*args):
-        raise OSError("FAKE transient disk failure")
+    def fail_final(path, value):
+        if value.get("state") == "queued":
+            raise OSError("FAKE disk failure after rename")
+        original(path, value)
 
     with monkeypatch.context() as patch:
-        patch.setattr(inbox_module, "atomic_json", disk_full)
-        inbox.scan(queue, SETTINGS, now=4)
-    assert len(queue.jobs()) == 1  # admission committed before receipt write
-    inbox.scan(queue, SETTINGS, now=5)
-    assert inbox.receipts.exists(), "In-memory receipt suppressed the retry after disk recovered"
+        patch.setattr(queue_module, "atomic_json", fail_final)
+        assert inbox.scan(queue, SETTINGS)
+    assert not source.exists()
+    assert queue.read(queue.jobs()[0])["state"] == "receiving"
+    restored = Queue(queue.root, recover=True)
+    assert restored.read(restored.jobs()[0])["state"] == "queued"
 
 
 def test_receipt_failure_does_not_reprint_original_after_retention(tmp_path, monkeypatch):

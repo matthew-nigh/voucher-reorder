@@ -28,7 +28,7 @@ def candidate(root, name, version):
     return folder
 
 
-def test_pdf_inbox_stability_receipts_and_no_original_deletion(tmp_path):
+def test_pdf_inbox_partial_writes_atomic_pickup_and_no_replay(tmp_path):
     inbox = Inbox(tmp_path)
     path = inbox.folder / "FAKE.pdf"
     payload = sample().getvalue()
@@ -40,10 +40,10 @@ def test_pdf_inbox_stability_receipts_and_no_original_deletion(tmp_path):
     path.write_bytes(payload)
     inbox.scan(queue, config(), now=5)
     inbox.scan(queue, config(), now=7)
-    assert not queue.jobs()
     inbox.scan(queue, config(), now=9)
     assert len(queue.jobs()) == 1
-    assert path.read_bytes() == payload
+    assert not path.exists()
+    assert (queue.jobs()[0].parent / "input.pdf").read_bytes() == payload
     # Receipt survives a restart and even expiration of private job records.
     import shutil
 
@@ -140,7 +140,7 @@ def test_stale_heartbeat_does_not_block_shutdown(tmp_path):
         with pytest.raises(TimeoutError):
             stop_worker(tmp_path, timeout=0)
     stop_worker(tmp_path, timeout=0)
-    assert not (tmp_path / "worker.json").exists()
+    assert (tmp_path / "worker.json").exists()  # status survives a stopped processor
 
 
 @pytest.mark.parametrize("ui", [False, True])
@@ -169,7 +169,7 @@ def test_optional_elevation_success_decline_and_failure(tmp_path, monkeypatch, e
     assert len(calls) == 1  # Exactly one elevation-helper invocation.
     assert len(messages) == (0 if ui else 1)
     detail = (tmp_path / "mode-status.txt").read_text()
-    assert ("declined or failed" in detail) == (exit_code != 0)
+    assert ("blocked, declined or failed" in detail) == (exit_code != 0)
     saved = load(tmp_path / "settings.json")
     assert saved.mode == mode
     assert saved.printer == config().printer
@@ -280,7 +280,8 @@ def test_export_can_be_reprinted_but_unchanged_inbox_receipt_is_not_replayed(tmp
         watcher.scan(queue, settings, now=0)
         watcher.scan(queue, settings, now=4)
         assert len(queue.jobs()) == 1
-    assert read_pdf(output) == output.read_bytes()
+    assert not output.exists()
+    assert read_pdf(queue.jobs()[0].parent / "input.pdf")
     process_one(queue, settings)
     assert queue.read(queue.jobs()[0])["state"] == "sent"
 

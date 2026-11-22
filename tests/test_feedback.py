@@ -10,9 +10,9 @@ import pytest
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import ArrayObject, DecodedStreamObject, DictionaryObject, NameObject, NumberObject
 
-from voucher_reorder import bounded, spool, worker
+from voucher_reorder import bounded, worker
 from voucher_reorder.alignment import create
-from voucher_reorder.config import Settings, save
+from voucher_reorder.config import Settings
 from voucher_reorder.engine import reorder
 from voucher_reorder.pdf_errors import MESSAGES, PdfError
 from voucher_reorder.printing import validate_vector_pdf
@@ -192,24 +192,6 @@ def test_untrusted_pdf_error_text_cannot_reach_status():
     assert diagnostic_reason("VRPDF secret payee 1234") is None
 
 
-def test_idle_virtual_worker_never_spawns(tmp_path, monkeypatch):
-    save(
-        tmp_path / "settings.json",
-        Settings(mode="virtual", output_mode="pdf", output_folder=str(tmp_path / "saved")),
-    )
-    polls = []
-    monkeypatch.setattr(spool, "poll", lambda excluded: polls.append(excluded))
-    monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: pytest.fail("idle process spawn"))
-
-    def tick(_):
-        if len(polls) == 4:
-            (tmp_path / "stop").touch()
-
-    monkeypatch.setattr(worker.time, "sleep", tick)
-    worker._serve(tmp_path)
-    assert polls == [[], [], [], []]
-
-
 def test_windows_children_disable_startup_feedback(monkeypatch):
     from voucher_reorder.process import background_options
 
@@ -218,32 +200,6 @@ def test_windows_children_disable_startup_feedback(monkeypatch):
     options = background_options()
     assert options["creationflags"] == 0x08000000
     assert options["startupinfo"].dwFlags == 0x81
-
-
-def test_spool_selection_preserves_owner_status_and_quarantine_checks():
-    from voucher_reorder.spool_poll import select_candidate
-
-    printer = dict(
-        comment="VoucherReorder owner=S-1-FAKE",
-        attributes=0x100,
-        port="NUL:",
-        driver="MS Publisher Imagesetter",
-    )
-    jobs = [
-        dict(id=i, ticks=i, key=f"{i}-{i}", status=status)
-        for i, status in enumerate((0x80, 0x88, 0x90, 0x2000, 0x8, 0))
-    ]
-    assert select_candidate(printer, jobs, "S-1-FAKE", ["0-0"])["id"] == 3
-    assert select_candidate(printer, jobs, "S-1-FAKE", ["0-0", "3-3"]) is None
-    for field, value in (
-        ("comment", "other owner"),
-        ("attributes", 0x108),
-        ("attributes", 0),
-        ("port", "FILE:"),
-        ("driver", "other driver"),
-    ):
-        with pytest.raises(ValueError, match="owner-restricted"):
-            select_candidate({**printer, field: value}, jobs, "S-1-FAKE", [])
 
 
 @pytest.mark.parametrize("location", ["form", "pattern", "glyph", "mask"])
