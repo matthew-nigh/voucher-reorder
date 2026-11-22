@@ -299,3 +299,44 @@ def test_hidden_resource_programs_cannot_bypass_preflight(tmp_path, location, co
     with pytest.raises(PdfError) as error:
         validate_vector_pdf(source)
     assert error.value.reason == reason
+
+
+def test_decompression_bomb_names_existing_pypdf_limit(tmp_path):
+    import zlib
+
+    from pypdf.generic import EncodedStreamObject
+
+    # Generate a small compressed bomb incrementally; the parent test never
+    # allocates its 76 MB expansion. The bounded child must enforce pypdf's cap.
+    compressor = zlib.compressobj()
+    chunks = [compressor.compress(b" " * 1000000) for _ in range(76)]
+    stream = EncodedStreamObject()
+    stream._data = b"".join(chunks) + compressor.flush()
+    stream[NameObject("/Filter")] = NameObject("/FlateDecode")
+    writer = PdfWriter()
+    page = writer.add_blank_page(612, 792)
+    page[NameObject("/Contents")] = writer._add_object(stream)
+    writer.write(tmp_path / "input.pdf")
+    with pytest.raises(ValueError) as error:
+        bounded.execute("prepare", tmp_path)
+    assert str(error.value) == MESSAGES["decompression"]
+
+
+@pytest.mark.parametrize(
+    "detail,reason",
+    [
+        ("Maximum XRef stream entry limit reached: 123", "xref"),
+        ("Reached maximum number of tokens per stream.", "tokens"),
+        ("Maximum filter count 10 exceeded: 11", "filters"),
+        ("Declared stream length of 123 exceeds maximum allowed length.", "stream_length"),
+        ("Detected cycle in /Parent hierarchy for key 'private payee'.", "parser_cycle"),
+        ("Unknown exception containing private account 1234", "parser_limit"),
+    ],
+)
+def test_parser_limits_use_fixed_messages_only(detail, reason):
+    from pypdf.errors import LimitReachedError
+
+    from voucher_reorder.pdf_errors import parser_limit_reason
+
+    assert parser_limit_reason(LimitReachedError(detail)) == reason
+    assert "private" not in MESSAGES[reason]

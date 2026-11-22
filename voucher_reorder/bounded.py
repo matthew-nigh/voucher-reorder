@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .config import Settings, data_dir
 from .diagnostics import ErrorCapture
-from .pdf_errors import PdfError, diagnostic_reason
+from .pdf_errors import PdfError, diagnostic_reason, parser_limit_reason
 from .process import background_options
 
 MAX_PAGES = 250
@@ -35,7 +35,7 @@ ERRORS = {
     2: "PDF must be unencrypted and contain 1 to 250 pages.",
     3: "PDF page size differs from selected printer paper. Select matching paper.",
     4: "Flatten optional-content layers before sending a PDF print job.",
-    5: "PDF processing failed or exceeded the document limits.",
+    5: "PDF processing failed. The PDF may be malformed or unsupported.",
     6: "Windows printer configuration failed (code 6). See print-error.log in the data folder.",
     7: "Windows page rendering or spooling failed (code 7). See print-error.log in the data folder.",
     8: "Windows printing exceeded its deadline (code 8). Check the printer before retrying.",
@@ -250,13 +250,22 @@ def main(operation, path, config):
 
 
 if __name__ == "__main__":
+    from pypdf.errors import LimitReachedError
+
     try:
         result = main(sys.argv[1], Path(sys.argv[2]), sys.argv[3])
     except PdfError as error:
         print(f"VRPDF {error.reason}", file=sys.stderr)
         result = 5
+    except LimitReachedError as error:
+        print(f"VRPDF {parser_limit_reason(error)}", file=sys.stderr)
+        result = 5
+    except RecursionError:
+        print("VRPDF parser_depth", file=sys.stderr)
+        result = 5
     except MemoryError:
-        print("VRPDF memory", file=sys.stderr)
+        reason = "print_memory" if sys.argv[1] == "print" else "memory"
+        print(f"VRPDF {reason}", file=sys.stderr)
         result = 5
     except ValueError as error:
         result = (
