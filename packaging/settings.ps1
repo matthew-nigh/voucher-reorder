@@ -173,7 +173,7 @@ $notice = Label 'Start with plain paper. Confirm section order on the Alignment 
 $layout = New-Object Windows.Forms.TableLayoutPanel
 $layout.Dock = 'Top'; $layout.AutoSize = $true; $layout.AutoSizeMode = 'GrowAndShrink'
 $layout.ColumnCount = 2; $layout.Padding = [Windows.Forms.Padding]::new(12)
-$layout.MinimumSize = [Drawing.Size]::new(620,0)
+$layout.MinimumSize = [Drawing.Size]::new(0,0)
 $null = $layout.ColumnStyles.Add([Windows.Forms.ColumnStyle]::new('Percent',50))
 $null = $layout.ColumnStyles.Add([Windows.Forms.ColumnStyle]::new('Percent',50))
 $alignTab.Controls.Add($layout)
@@ -206,7 +206,7 @@ $sourcePicture = @(); $picture = @()
 for ($i=0; $i -lt 3; $i++) {
     foreach ($column in 0,1) {
         $c = New-Object Windows.Forms.Label
-        $c.MinimumSize = [Drawing.Size]::new(0,60); $c.TextAlign = 'MiddleCenter'; $c.BorderStyle = 'FixedSingle'
+        $c.MinimumSize = [Drawing.Size]::new(0,45); $c.TextAlign = 'MiddleCenter'; $c.BorderStyle = 'FixedSingle'
         Cell $c $column ($i+2)
         if ($column -eq 0) { $sourcePicture += $c } else { $picture += $c }
     }
@@ -216,10 +216,10 @@ $draw = {
     $src = $orders[$sourceOrder.SelectedIndex]; $dst = $orders[$order.SelectedIndex]
     for ($j=0; $j -lt 3; $j++) {
         $section = $src[$j]; $destination = [array]::IndexOf($dst,$section)+1
-        $sourcePicture[$j].Text = '{0}  -> output section {1}' -f $names[$section],$destination
+        $sourcePicture[$j].Text = "{0}`nTo output section {1}" -f $names[$section],$destination
         $sourcePicture[$j].BackColor = @([Drawing.Color]::LightBlue,[Drawing.Color]::Honeydew,[Drawing.Color]::LemonChiffon)[$section]
         $section = $dst[$j]; $origin = [array]::IndexOf($src,$section)+1
-        $picture[$j].Text = '{0}  (from source section {1})' -f $names[$section],$origin
+        $picture[$j].Text = "{0}`nFrom source section {1}" -f $names[$section],$origin
         $picture[$j].BackColor = @([Drawing.Color]::LightBlue,[Drawing.Color]::Honeydew,[Drawing.Color]::LemonChiffon)[$section]
     }
 }
@@ -325,9 +325,10 @@ if ($SmokeTest) {
                 foreach ($bands in @($sourcePicture,$picture)) {
                     for ($j=0; $j -lt 3; $j++) {
                         $band=$bands[$j]
-                        if (-not $band.Text -or $band.Height -lt 55*$SmokeScale) { throw 'Preview band clipped or unlabeled' }
+                        if (-not $band.Text -or $band.Height -lt 40*$SmokeScale) { throw 'Preview band clipped or unlabeled' }
                         if ($j -gt 0 -and $band.Top -lt $bands[$j-1].Bottom) { throw 'Preview bands overlap' }
                         if ($band.Top -lt $order.Bottom) { throw 'Preview overlaps selector' }
+                        if ($layout.Left+$band.Left -lt 0 -or $layout.Left+$band.Right -gt $alignTab.ClientSize.Width) { throw 'Preview requires horizontal scrolling' }
                         $measure=[Windows.Forms.TextRenderer]::MeasureText($band.Text,$band.Font)
                         if ($measure.Width -gt $band.Width -or $measure.Height -gt $band.Height) { throw 'Preview label does not fit' }
                     }
