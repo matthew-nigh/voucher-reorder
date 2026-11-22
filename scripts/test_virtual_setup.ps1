@@ -14,7 +14,14 @@ $global:printerGoneOnce=$false
 $global:busyRemovals=0
 $global:removeCalls=0
 $global:leavePort=$false
+$global:restartCount=0
+$global:restartClearsBusy=$false
 function Start-Sleep { param($Milliseconds) } # Exercise bounded backoff without wall-clock delays.
+function Restart-Service { param($Name,$ErrorAction)
+    if ($Name -ne 'Spooler') { throw 'Wrong service restarted' }
+    $global:restartCount++
+    if ($global:restartClearsBusy) { $global:busyRemovals=0 }
+}
 function Get-Printer { param($Name,$ErrorAction)
     if ($global:printerReads -gt 0) {
         $global:printerReads--
@@ -60,20 +67,25 @@ try {
         & $script -Action $operation -TargetSid $sid -IncomingPath $target -NoDialogs
         if ($LASTEXITCODE) { throw "Unexpected $operation failure" }
     }
-    if ($global:printer -or $global:port -or $global:removeCalls -ne 4) { throw 'Incomplete bounded removal' }
+    if ($global:printer -or $global:port -or $global:removeCalls -ne 4 -or $global:restartCount) { throw 'Incomplete bounded removal' }
     # An orphaned port from a prior partial removal must be retried too.
     $global:port=$true
     & $script -Action remove -TargetSid $sid -IncomingPath $target
     if ($LASTEXITCODE -or $global:port) { throw 'Orphan port remains' }
     # A successful cmdlet return is insufficient if the port is still listed.
-    $global:port=$true; $global:leavePort=$true; $global:removeCalls=0
+    $global:port=$true; $global:leavePort=$true; $global:removeCalls=0; $global:restartCount=0
     & $script -Action remove -TargetSid $sid -IncomingPath $target
-    if (-not $LASTEXITCODE -or -not $global:port -or $global:removeCalls -ne 30) { throw 'Persistent port was reported removed' }
+    if (-not $LASTEXITCODE -or -not $global:port -or $global:removeCalls -ne 60 -or $global:restartCount -ne 1) { throw 'Persistent port was reported removed' }
     $global:leavePort=$false
-    # Persistent spooler errors must also fail after the bounded retry budget.
-    $global:busyRemovals=40; $global:removeCalls=0
+    # A spooler restart releases a port that remained busy through the first bound.
+    $global:busyRemovals=40; $global:removeCalls=0; $global:restartCount=0; $global:restartClearsBusy=$true
     & $script -Action remove -TargetSid $sid -IncomingPath $target
-    if (-not $LASTEXITCODE -or $global:removeCalls -ne 30) { throw 'Busy port did not fail within the bound' }
+    if ($LASTEXITCODE -or $global:port -or $global:removeCalls -ne 31 -or $global:restartCount -ne 1) { throw 'Spooler restart did not clear busy port' }
+    $global:restartClearsBusy=$false; $global:port=$true
+    # Persistent spooler errors must also fail after the bounded retry budget.
+    $global:busyRemovals=70; $global:removeCalls=0; $global:restartCount=0
+    & $script -Action remove -TargetSid $sid -IncomingPath $target
+    if (-not $LASTEXITCODE -or $global:removeCalls -ne 60 -or $global:restartCount -ne 1) { throw 'Busy port did not fail within the bound' }
     $global:busyRemovals=0
     & $script -Action remove -TargetSid $sid -IncomingPath $target
     if ($LASTEXITCODE -or $global:port) { throw 'Retry after partial removal failed' }
