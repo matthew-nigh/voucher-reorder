@@ -7,6 +7,8 @@ import sys
 import threading
 from pathlib import Path
 
+from .process import background_options
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -17,7 +19,7 @@ def run(args, timeout=120):
         timeout=timeout,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        **background_options(),
     )
 
 
@@ -53,7 +55,7 @@ def convert(source, output):
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            **background_options(),
         ) as process,
     ):
         try:
@@ -78,7 +80,7 @@ def print_run(args, code, timeout=120, capture=False):
         list(map(str, args)),
         stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
         stderr=subprocess.PIPE,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        **background_options(),
     ) as child:
         errors = ErrorCapture(child.stderr)
         output = bytearray()
@@ -185,6 +187,4 @@ def register_user():
     command = subprocess.list2cmdline([str(executable), str(ROOT / "app.py"), "worker"])
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run") as key:
         winreg.SetValueEx(key, "VoucherReorder", 0, winreg.REG_SZ, command)
-    subprocess.Popen(
-        [str(executable), str(ROOT / "app.py"), "worker"], creationflags=subprocess.CREATE_NO_WINDOW
-    )
+    subprocess.Popen([str(executable), str(ROOT / "app.py"), "worker"], **background_options())

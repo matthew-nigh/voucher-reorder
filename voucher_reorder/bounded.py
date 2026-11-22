@@ -14,6 +14,8 @@ from pathlib import Path
 
 from .config import Settings, data_dir
 from .diagnostics import ErrorCapture
+from .pdf_errors import PdfError, diagnostic_reason
+from .process import background_options
 
 MAX_PAGES = 250
 MEMORY = 768 * 1024**2
@@ -37,7 +39,6 @@ ERRORS = {
     6: "Windows printer configuration failed (code 6). See print-error.log in the data folder.",
     7: "Windows page rendering or spooling failed (code 7). See print-error.log in the data folder.",
     8: "Windows printing exceeded its deadline (code 8). Check the printer before retrying.",
-    10: "This PDF was already reordered. Use the original source PDF.",
     9: "Windows print worker terminated unexpectedly (code 9). See print-error.log before retrying.",
 }
 
@@ -47,7 +48,7 @@ class LimitedOutput(io.BufferedWriter):
 
     def write(self, data):
         if self.tell() + len(data) > MAX_OUTPUT:
-            raise ValueError("Expanded PDF exceeds processing limit.")
+            raise PdfError("output")
         return super().write(data)
 
 
@@ -158,7 +159,7 @@ def _execute(operation, path, settings=None, scratch=None):
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        **background_options(),
     )
     errors = ErrorCapture(child.stderr)
     started = time.monotonic()
@@ -169,9 +170,9 @@ def _execute(operation, path, settings=None, scratch=None):
             if operation == "receive" and ((path / "stop").exists() or (path / "maintenance.json").exists()):
                 raise ValueError("Spool receipt interrupted.")
             if time.monotonic() >= deadline:
-                raise ValueError(ERRORS[8 if operation == "print" else 5])
+                raise ValueError(ERRORS[8]) if operation == "print" else PdfError("deadline")
             if operation == "prepare" and any(p.stat().st_size > MAX_OUTPUT for p in path.glob("*.pdf")):
-                raise ValueError(ERRORS[5])
+                raise PdfError("output")
             if operation == "print" and not budget_loaded and budget_file.exists():
                 try:
                     pages = json.loads(budget_file.read_text())["pages"]
@@ -182,7 +183,8 @@ def _execute(operation, path, settings=None, scratch=None):
                     pass  # Atomic publication may not yet be visible.
             time.sleep(0.05)
         if child.returncode:
-            raise ValueError(ERRORS.get(child.returncode, ERRORS[9 if operation == "print" else 5]))
+            detail = diagnostic_reason(errors.finish())
+            raise ValueError(detail or ERRORS.get(child.returncode, ERRORS[9 if operation == "print" else 5]))
     finally:
         if os.name != "nt":
             try:
@@ -218,24 +220,28 @@ def main(operation, path, config):
         return 0
     if operation == "inspect":
         reader = PdfReader(path, strict=True)
-        if not reader.is_encrypted and (reader.metadata or {}).get("/VoucherReorderOutput") == "1":
-            return 10
-        return 2 if reader.is_encrypted or not 0 < len(reader.pages) <= MAX_PAGES else 0
+        if reader.is_encrypted:
+            raise PdfError("encrypted")
+        if len(reader.pages) > MAX_PAGES:
+            raise PdfError("pages")
+        if not reader.pages:
+            raise PdfError("empty")
+        return 0
     if operation == "prepare":
         if (path / "input.ps").exists() and not (path / "input.pdf").exists():
             convert(path / "input.ps", path / "input.pdf")
         if (path / "input.pdf").stat().st_size > MAX_OUTPUT:
-            return 5
-        if settings.output_mode == "pdf":
-            validate_vector_pdf(path / "input.pdf")
+            raise PdfError("input")
+        validate_vector_pdf(path / "input.pdf")
         reorder(path / "input.pdf", path / "output.pdf", settings)
         if (path / "output.pdf").stat().st_size > MAX_OUTPUT:
-            return 5
+            raise PdfError("output")
         validate_pages(path / "output.pdf", settings)
         return 0
     if operation == "print":
         from .config import atomic_json
 
+        validate_vector_pdf(path)
         atomic_json(path.parent / "print-budget.json", {"pages": validate_pages(path, settings)})
         forward(path, settings)
         atomic_json(path.parent / "print-metrics.json", {"peak_job_bytes": peak_memory()})
@@ -246,6 +252,12 @@ def main(operation, path, config):
 if __name__ == "__main__":
     try:
         result = main(sys.argv[1], Path(sys.argv[2]), sys.argv[3])
+    except PdfError as error:
+        print(f"VRPDF {error.reason}", file=sys.stderr)
+        result = 5
+    except MemoryError:
+        print("VRPDF memory", file=sys.stderr)
+        result = 5
     except ValueError as error:
         result = (
             3

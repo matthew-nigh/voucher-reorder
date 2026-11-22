@@ -7,6 +7,7 @@ from .bounded import ERRORS, execute
 from .config import atomic_json, data_dir, from_dict, load
 from .inbox import Inbox
 from .locking import FileLock
+from .pdf_errors import MESSAGES as PDF_MESSAGES
 from .printing import save_pdf
 from .queue import Queue
 from .windows import convert, forward, message
@@ -49,9 +50,10 @@ def process_one(queue, settings, converter=convert, sender=forward):
                 # Only controlled validation messages may reach status; never raw PDF/parser data.
                 detail = (
                     str(error)
-                    if type(error) is ValueError
+                    if isinstance(error, ValueError)
                     and (
                         str(error) in ERRORS.values()
+                        or str(error) in PDF_MESSAGES.values()
                         or str(error).startswith(
                             (
                                 "Flatten optional",
@@ -96,7 +98,11 @@ def _serve(root):
                 virtual_ready = False
                 if settings.mode == "virtual" and settings.output_ready:
                     try:
-                        execute("receive", root, settings)
+                        from .spool import retained_candidate
+
+                        # Idle polling stays in-process; isolate only payload reads.
+                        if retained_candidate(root / "spool-review.json") is not None:
+                            execute("receive", root, settings)
                         virtual_ready = True
                     except (OSError, ValueError):
                         warning = "Virtual job retained or printer unavailable. Check the Windows queue and provisioning."

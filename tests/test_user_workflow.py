@@ -205,7 +205,7 @@ def test_incomplete_encrypted_pdf_not_admitted(tmp_path):
     writer.add_blank_page(612, 792)
     writer.encrypt("FAKE TEST ONLY")
     writer.write(source)
-    with pytest.raises(ValueError, match="unencrypted"):
+    with pytest.raises(ValueError, match="Encrypted"):
         read_pdf(source)
 
 
@@ -268,7 +268,7 @@ def test_pdf_output_without_physical_printer(tmp_path, printer):
     assert not list(folder.glob("*.tmp"))
 
 
-def test_export_cannot_feed_inbox_even_after_copy_and_restart(tmp_path):
+def test_export_can_be_reprinted_but_unchanged_inbox_receipt_is_not_replayed(tmp_path):
     from voucher_reorder.engine import reorder
 
     inbox = Inbox(tmp_path)
@@ -279,9 +279,10 @@ def test_export_cannot_feed_inbox_even_after_copy_and_restart(tmp_path):
     for watcher in (inbox, Inbox(tmp_path)):
         watcher.scan(queue, settings, now=0)
         watcher.scan(queue, settings, now=4)
-        assert not queue.jobs()
-    with pytest.raises(ValueError, match="already reordered"):
-        read_pdf(output)
+        assert len(queue.jobs()) == 1
+    assert read_pdf(output) == output.read_bytes()
+    process_one(queue, settings)
+    assert queue.read(queue.jobs()[0])["state"] == "sent"
 
 
 @pytest.mark.parametrize("child", ["", "nested"])

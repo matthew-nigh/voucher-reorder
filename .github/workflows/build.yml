@@ -37,6 +37,8 @@ jobs:
           python-version: '3.13.12'
       - name: Install Windows acceptance test tools
         run: python -m pip install -r requirements-dev.txt
+      - name: Run portable suite on Windows
+        run: python -m pytest -q
       - name: Install packaging tools
         run: choco install nsis --version=3.11 -y --no-progress
       - name: Load x64 Visual Studio compiler environment
@@ -94,12 +96,12 @@ jobs:
       - name: Exercise integrated provisioning, version checks and uninstall
         shell: powershell
         timeout-minutes: 6
-        run: scripts/test_provisioning.ps1 -Installer upgrade-baseline/dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.1-Setup.exe
+        run: scripts/test_provisioning.ps1 -Installer upgrade-baseline/dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.2-Setup.exe
       - name: Install and upgrade in a real standard-user account
         if: ${{ !cancelled() && steps.upgrade.outcome == 'success' }}
         shell: powershell
         timeout-minutes: 6
-        run: scripts/test_standard_user.ps1 -Installer upgrade-baseline/dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.1-Setup.exe
+        run: scripts/test_standard_user.ps1 -Installer upgrade-baseline/dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.2-Setup.exe
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: VoucherReorder-windows-x64

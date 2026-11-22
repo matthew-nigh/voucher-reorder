@@ -36,11 +36,18 @@ try {
     Setup $Installer $true
     Check '0.2.0' 'virtual'
     Setup $UpgradeInstaller $false
-    Check '0.2.1' 'pdf' # No UAC/app upgrade dependency on the machine package.
+    Check '0.2.2' 'pdf' # No UAC/app upgrade dependency on the machine package.
     Setup $UpgradeInstaller $true
-    Check '0.2.1' 'virtual'
+    Check '0.2.2' 'virtual'
     $active = Get-Content (Join-Path $root 'current.json') -Raw | ConvertFrom-Json
     $app = Join-Path $root ('deployments\'+$active.directory)
+    $python = Join-Path $app 'runtime\python.exe'
+    & $python (Join-Path $app 'app.py') stop
+    if ($LASTEXITCODE) { throw 'Could not stop worker for retained printer test' }
+    $feedback = Join-Path ([IO.Path]::GetTempPath()) ([Guid]::NewGuid().ToString('N'))
+    & $python (Join-Path $PSScriptRoot 'test_feedback_windows.py') $feedback 'Voucher Reorder'
+    if ($LASTEXITCODE) { throw 'Retained printer feedback regressions failed' }
+    Remove-Item -LiteralPath $feedback -Recurse -Force
     $manifest = Join-Path $app 'provisioning\package.json'
     $original = [IO.File]::ReadAllText($manifest)
     try {

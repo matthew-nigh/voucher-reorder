@@ -40,7 +40,7 @@ def check(folder, printer):
         try:
             execute("print", path, Settings(printer=printer))
         except ValueError as error:
-            assert "code 7" in str(error), str(error)
+            assert ("Scanned or image-only" if kind == "image" else "blank page") in str(error), str(error)
         else:
             raise AssertionError(f"{kind} page was accepted")
         assert not marker.exists(), f"{kind} page reached StartDoc"

@@ -10,37 +10,41 @@ from pypdf.generic import (
     DictionaryObject,
     FloatObject,
     NameObject,
+    StreamObject,
 )
 
 from .bounded import MAX_OUTPUT, MAX_PAGES, LimitedOutput
 from .config import Settings
+from .pdf_errors import PdfError
 
 
 def reorder(source, destination: str | Path, settings: Settings) -> None:
     reader = PdfReader(source, strict=True)
     if reader.is_encrypted:
-        raise ValueError("Encrypted print jobs are not supported.")
+        raise PdfError("encrypted")
     if "/OCProperties" in reader.root_object:
-        raise ValueError("Flatten optional-content layers before sending a PDF print job.")
+        raise PdfError("layers")
     if len(reader.pages) > MAX_PAGES:
-        raise ValueError("Too many pages.")
+        raise PdfError("pages")
     if not reader.pages:
-        raise ValueError("The print job has no pages.")
+        raise PdfError("empty")
     expanded = 0
+    # Keep one clone map across pages so shared embedded fonts stay shared.
     writer = PdfWriter()
+    normalized = PdfWriter()
     for page in reader.pages:
         if float(page.get("/UserUnit", 1)) != 1:
-            raise ValueError("Nonstandard PDF UserUnit is unsupported; print at normal scale.")
+            raise PdfError("units")
         if page.get("/Annots"):
-            raise ValueError("Flatten annotations before sending a PDF print job.")
-        page = PdfWriter().add_page(page)
+            raise PdfError("annotations")
+        page = normalized.add_page(page)
         page.transfer_rotation_to_content()
         # CropBox is the visible sheet, including non-zero origins.
         box = page.cropbox
         x0, y0 = float(box.left), float(box.bottom)
         width, height = float(box.width), float(box.height)
         if width <= 0 or height <= 0:
-            raise ValueError("Page dimensions must be positive.")
+            raise PdfError("dimensions")
         edges = settings.edges(height)
         page.add_transformation(Transformation().translate(-x0, -y0))
         form = DecodedStreamObject()
@@ -48,7 +52,7 @@ def reorder(source, destination: str | Path, settings: Settings) -> None:
         data = contents.get_data() if contents is not None else b""
         expanded += len(data)
         if expanded > MAX_OUTPUT:
-            raise ValueError("Expanded PDF exceeds processing limit.")
+            raise PdfError("expanded")
         form.set_data(data)
         form.update(
             {
@@ -60,7 +64,7 @@ def reorder(source, destination: str | Path, settings: Settings) -> None:
         )
         if "/Group" in page:
             form[NameObject("/Group")] = page["/Group"].clone(writer)
-        ref = writer._add_object(form)
+        ref = writer._add_object(form.flate_encode())
         out = writer.add_blank_page(width, height)
         out[NameObject("/Resources")] = DictionaryObject(
             {NameObject("/XObject"): DictionaryObject({NameObject("/Sheet"): ref})}
@@ -83,7 +87,7 @@ def reorder(source, destination: str | Path, settings: Settings) -> None:
             top += band_height
         stream = DecodedStreamObject()
         stream.set_data("".join(commands).encode("ascii"))
-        out[NameObject("/Contents")] = writer._add_object(stream)
+        out[NameObject("/Contents")] = writer._add_object(stream.flate_encode())
     writer._root_object[NameObject("/ViewerPreferences")] = DictionaryObject(
         {
             NameObject("/PrintScaling"): NameObject("/None"),
@@ -94,5 +98,10 @@ def reorder(source, destination: str | Path, settings: Settings) -> None:
     writer.add_metadata(
         {"/Producer": "Voucher Reorder", "/Title": "Voucher print job", "/VoucherReorderOutput": "1"}
     )
+    # Lossless only: retain font programs/encodings and all vector operators.
+    for obj in list(writer._objects):
+        if isinstance(obj, StreamObject) and "/Filter" not in obj:
+            writer._replace_object(obj.indirect_reference, obj.flate_encode())
+    writer.compress_identical_objects(remove_duplicates=True, remove_unreferenced=True)
     with LimitedOutput(open(destination, "wb", buffering=0)) as output:
         writer.write(output)

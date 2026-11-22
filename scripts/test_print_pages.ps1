@@ -19,6 +19,8 @@ try {
         if ([DateTime]::UtcNow -ge $deadline) { throw 'Windows spool backlog remains after output verification' }
         Start-Sleep -Milliseconds 100
     }
+    & $python (Join-Path $PSScriptRoot 'test_feedback_windows.py') (Join-Path $temp 'feedback') $name
+    if ($LASTEXITCODE) { throw 'Saved Microsoft PDF reprint feedback regressions failed' }
     & $python (Join-Path $PSScriptRoot 'test_vector_rejection.py') $temp $name
     if ($LASTEXITCODE) { throw 'Vector preflight rejection checks failed' }
 } finally {

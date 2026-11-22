@@ -11,7 +11,7 @@ on your QuickBooks/printer before putting live check stock in the tray.
 
 ## Install and choose a mode
 
-Download `VoucherReorder-0.2.1-Setup.exe` from the PR's **Actions artifact** (or a
+Download `VoucherReorder-0.2.2-Setup.exe` from the PR's **Actions artifact** (or a
 future tagged Release). Run it normally. Python and PDF tools are included.
 
 | Mode | What you do in QuickBooks | Administrator needed? |
@@ -49,7 +49,9 @@ as Microsoft Print to PDF uses the same direct PDF-file output, with no second
 Save dialog or driver dependency. Alignment tests, manual PDFs, Inbox jobs and
 virtual-printer input all use this output choice. Job status reports the saved
 file path. Each job gets a unique filename; files remain until you delete them.
-Generated PDFs are marked and refused as new input even if copied into the Inbox.
+Saved PDFs can be submitted again. Set the input section order to match that PDF
+before reordering it again. Output folders must remain outside the Inbox; unchanged
+Inbox files are still processed only once.
 No PDF data is rasterized. This tests section placement, not physical margins/MICR.
 
 Settings enumerates the selected driver's paper sizes and trays and shows its

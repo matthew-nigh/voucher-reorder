@@ -2,7 +2,7 @@
 
 **Start with plain paper, not check stock.** Windows 10/11 x64 is supported.
 
-1. **Install or upgrade.** Run `VoucherReorder-0.2.1-Setup.exe` normally. If SmartScreen
+1. **Install or upgrade.** Run `VoucherReorder-0.2.2-Setup.exe` normally. If SmartScreen
    appears, confirm the download came from this project, then choose **More info →
    Run anyway**. PDF mode needs no administrator access. For virtual mode, select
    **Virtual printer (one administrator prompt)** in setup. Setup includes the matching

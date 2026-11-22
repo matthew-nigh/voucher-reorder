@@ -199,7 +199,7 @@ def test_worker_deadline_reaps_busy_process(tmp_path, monkeypatch):
 
     monkeypatch.setattr(bounded.subprocess, "Popen", launch_sleeper)
     monkeypatch.setattr(bounded, "TIMEOUT", 0.1)
-    with pytest.raises(ValueError, match="processing failed"):
+    with pytest.raises(ValueError, match="processing time limit"):
         bounded.execute("inspect", tmp_path / "unused.pdf")
     assert len(children) == 1
     assert children[0].poll() is not None

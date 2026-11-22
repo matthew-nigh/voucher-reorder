@@ -30,6 +30,11 @@ MESSAGES = {
 
 
 def sanitize(line):
+    from .pdf_errors import MESSAGES as PDF_MESSAGES
+
+    if line.strip().startswith("VRPDF "):
+        reason = line.strip()[6:]
+        return f"VRPDF {reason}\n" if reason in PDF_MESSAGES else ""
     match = re.match(
         r"^(VRPRINT (?:worker )?[A-Za-z][A-Za-z0-9_]{0,79}"
         r"(?: HRESULT=-?[0-9]+ line=[0-9]+| code=[0-9]+)?)(?:: (.*))?",

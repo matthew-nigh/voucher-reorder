@@ -3,12 +3,11 @@
 import ctypes as c
 import hashlib
 import json
-import subprocess
 from ctypes import wintypes as w
 
 from .config import atomic_json
 from .queue import MAX_JOB, Queue
-from .windows import powershell
+from .spool_poll import poll
 
 
 def check(ok):
@@ -16,19 +15,18 @@ def check(ok):
         raise c.WinError(c.get_last_error())
 
 
+def retained_candidate(quarantine):
+    excluded = json.loads(quarantine.read_text()) if quarantine.exists() else []
+    candidate = poll(excluded)
+    if candidate is None and excluded:
+        raise ValueError("Retained Windows job needs review.")
+    return candidate
+
+
 def receive_one(root, settings):
     quarantine = root / "spool-review.json"
-    info = subprocess.run(
-        powershell("retained_job.ps1", "-Quarantine", quarantine),
-        check=True,
-        capture_output=True,
-        timeout=15,
-        creationflags=subprocess.CREATE_NO_WINDOW,
-    )
-    candidate = json.loads(info.stdout.decode("utf-8-sig"))
+    candidate = retained_candidate(quarantine)
     if candidate is None:
-        if quarantine.exists():
-            raise ValueError("Retained Windows job needs review.")
         return
     job_id = candidate["id"]
     key = candidate["key"]

@@ -16,6 +16,32 @@ Exercise memory/time limits and check that the next ordinary job completes.
 - [ ] Installer version/checksum, installed BUILD_INFO.json revision, standard/admin
       account used (report role, not username), and whether PDF output already exists.
 
+## v0.2.2 output, reprint, errors and idle cursor regressions
+
+- [ ] Generate the alignment sheet, save its reordered PDF, and record both byte
+      sizes. Direct output should be well below twice the input. Repeat through
+      the Voucher Reorder printer and record the PostScript-converted PDF size;
+      Windows drivers can turn text into larger vector outlines.
+- [ ] Submit the saved output directly, then print it from Edge and Acrobat through
+      Voucher Reorder. Repeat with Microsoft Print to PDF output. All should pass
+      vector validation; set source section order to the saved document's order.
+- [ ] A scanned/image-only PDF must show the explicit unsupported-scanned-PDF
+      explanation in Job status. A 251-page PDF must name the 250-page limit.
+      Test a blank PDF and a real recursive/deep Form PDF; both remain rejected.
+- [ ] Leave the virtual worker idle for five minutes with Settings open and closed.
+      No recurring Python/PowerShell children or app-starting mouse cursor. Submit
+      a job, check its output, and confirm it returns to quiet idle operation.
+- [ ] Compare embedded MICR font appearance/spacing on plain paper. The optimizer
+      compresses streams and shares identical objects; it does not substitute,
+      subset or re-encode font programs.
+
+Portable measurements (same 5,916-byte generated alignment input): v0.2.1 direct
+output 5,169 bytes; v0.2.2 direct output 2,038 bytes. A Poppler PostScript/Ghostscript
+round trip produced an 8,762-byte input PDF: reorder output fell from 11,878 to
+7,890 bytes. These are reproducible synthetic measurements, not a measurement of
+Matthew's unavailable approximately 370 KB output file. Windows CI logs separate
+native Microsoft PDF and MS Publisher Imagesetter round-trip measurements.
+
 ## v0.2.1 feedback regressions (include a PC with no physical printer)
 
 - [ ] At Windows scaling 100%, 150% and 200%, select Stub 1 / Check / Stub 2 output.
@@ -40,11 +66,11 @@ Exercise memory/time limits and check that the next ordinary job completes.
       settings save successfully and use direct PDF output in the chosen folder.
       Voucher Reorder as output is always refused. No second output Save dialog.
 - [ ] Reject an output folder equal to or below the Inbox (including a folder alias).
-      Copy generated output back into the Inbox, restart the app and verify no new
-      job/output is created. Existing source files are not reprocessed. Reject
+      Copy generated output back into the Inbox: it is accepted once. Restart the app
+      and verify it is not processed again. Existing source files are not reprocessed. Reject
       scanned/image PDFs and blank pages; confirm saved test text remains searchable.
 - [ ] Upgrade an actual 0.2.0 installation with nondefault layout/nudges and held
-      jobs to 0.2.1 without uninstalling. Load/save Settings and resume a held fake
+      jobs to 0.2.2 without uninstalling. Load/save Settings and resume a held fake
       job: default source order and old output/nudges preserved; obsolete fields
       disappear on save. No additional UAC for the per-user update.
 
@@ -167,6 +193,6 @@ interactive UAC still need the checks above. Linux tests cover all 36 vector PDF
 mappings with unequal heights/nudges, migration, file output and Inbox loop guards.
 CI also exercises the real provisioning package install/upgrade/uninstall and version
 mismatch rejection, followed by a real standard-user install/upgrade/repair/uninstall from the pinned
-v0.2.0 baseline to v0.2.1, including settings and held-job snapshot migration.
+v0.2.0 baseline to v0.2.2, including settings and held-job snapshot migration.
 Interactive UAC with alternate credentials and physical MICR remain manual acceptance.
 Inspect only the sanitized `print-error.log` when diagnosing code 6/7/8 failures.
