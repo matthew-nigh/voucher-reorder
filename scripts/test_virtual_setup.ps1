@@ -46,8 +46,9 @@ function Remove-Printer { param($Name)
     $global:printerGoneOnce=$false
     $global:printer=$null
 }
-function Remove-PrinterPort { param($Name,$ErrorAction)
+function Remove-PrinterPort { param($Name,$ComputerName,$ErrorAction)
     if ($Name -eq 'NUL:') { throw 'Shared system port removal attempted' }
+    if (-not $ComputerName -or $ComputerName -ne $env:COMPUTERNAME) { throw 'Local print server was not specified' }
     $global:removeCalls++
     if ($global:busyRemovals -gt 0) { $global:busyRemovals--; throw 'Port handle is still busy' }
     if (-not $global:leavePort) { $global:port=$false }

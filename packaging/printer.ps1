@@ -39,7 +39,7 @@ function Remove-DedicatedPort([string]$PortName) {
             throw "Unexpected monitor for dedicated port '$PortName'."
         }
         try {
-            Remove-PrinterPort -Name $PortName -ErrorAction Stop
+            Remove-PrinterPort -Name $PortName -ComputerName $env:COMPUTERNAME -ErrorAction Stop
         } catch {
             # Remove-Printer returns before the spooler releases its port handle.
             $lastError = $_.Exception.Message
