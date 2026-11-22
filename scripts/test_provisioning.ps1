@@ -4,9 +4,12 @@ $ErrorActionPreference = 'Stop'
 $root = Join-Path $env:LOCALAPPDATA 'Programs\Voucher Reorder'
 $data = Join-Path $env:LOCALAPPDATA 'VoucherReorder'
 function Setup($path,$virtual) {
+    Write-Output "Starting setup $([IO.Path]::GetFileName($path)); virtual=$virtual"
     $arguments = if ($virtual) { '/S /VIRTUAL=1' } else { '/S' }
     $p = Start-Process (Resolve-Path $path) -ArgumentList $arguments -Wait -PassThru
     if ($p.ExitCode) { throw "Setup failed: $($p.ExitCode)" }
+    Write-Output 'Setup process exited'
+    Get-Content (Join-Path $data 'mode-status.txt') -ErrorAction SilentlyContinue
 }
 Setup $Installer $true # historical v0.2.0 fixture, not shipped by the new installer
 if ((Get-Printer -Name 'Voucher Reorder').DriverName -ne 'MS Publisher Imagesetter') { throw 'Legacy fixture missing' }
@@ -24,6 +27,7 @@ if ($printer.DriverName -ne 'Microsoft Print To PDF' -or $printer.PortName -ne (
     throw 'Fixed-port clone setup failed'
 }
 if (Test-Path (Join-Path $app 'provisioning\Setup.exe')) { throw 'Unsigned elevated package must not ship' }
+Write-Output 'Clone configured; beginning real document prints'
 & (Join-Path $PSScriptRoot 'test_clone_printer.ps1') -AppRoot $app
 if ($LASTEXITCODE) { throw 'Clone acceptance failed' }
 # Removal also elevates only the built-in PowerShell binary.

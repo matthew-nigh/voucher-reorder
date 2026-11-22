@@ -41,15 +41,17 @@ def test_batch_budget_scales_with_validated_page_count(tmp_path, monkeypatch):
     # Worker publishes its validated page count; the supervisor must not use the
     # old single-phase deadline for a large batch. No PDF parsing in the parent.
     real_popen = subprocess.Popen
-    monkeypatch.setattr(bounded, "PRINT_STARTUP", 0.1)
-    monkeypatch.setattr(bounded, "PRINT_PER_PAGE", 0.05)
-    monkeypatch.setattr(bounded, "PRINT_PROBE_TIMEOUT", 0.1)
+    # Windows runner process startup can exceed 100 ms. Keep the test job longer
+    # than its startup-only allowance without depending on subsecond scheduling.
+    monkeypatch.setattr(bounded, "PRINT_STARTUP", 2)
+    monkeypatch.setattr(bounded, "PRINT_PER_PAGE", 1)
+    monkeypatch.setattr(bounded, "PRINT_PROBE_TIMEOUT", 1)
 
     def launch(args, **kwargs):
         code = (
             "from pathlib import Path; import time; "
             f"Path({str(tmp_path / 'print-budget.json')!r}).write_text('{{\"pages\":10}}'); "
-            "time.sleep(.35)"
+            "time.sleep(3)"
         )
         return real_popen([sys.executable, "-c", code], **kwargs)
 

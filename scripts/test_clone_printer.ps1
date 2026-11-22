@@ -11,6 +11,7 @@ if ($LASTEXITCODE) { throw 'Could not configure output' }
 if ($LASTEXITCODE) { throw 'Watcher registration failed' }
 Add-Type -AssemblyName System.Drawing
 function Send-Document($count,$title) {
+    Write-Output "Printing $title ($count pages)"
     $source=Join-Path $data 'CI-source.txt'
     Set-Content -LiteralPath $source -Value "VOID FAKE $title"
     $document=New-Object Drawing.Printing.PrintDocument
@@ -28,7 +29,7 @@ function Send-Document($count,$title) {
         finally { $font.Dispose() }
         $event.HasMorePages=$script:page -lt $script:pageCount
     })
-    try { $document.Print() } finally { $document.Dispose() }
+    try { $document.Print(); Write-Output "Submitted $title" } finally { $document.Dispose() }
 }
 function Wait-Sent($count) {
     $deadline=[DateTime]::UtcNow.AddSeconds(90)

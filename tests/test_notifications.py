@@ -216,3 +216,33 @@ def test_output_cannot_target_private_job_folders(tmp_path, monkeypatch, name):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     with pytest.raises(ValueError, match="private job folders"):
         Settings(output_mode="pdf", output_folder=str(tmp_path / "VoucherReorder" / name))
+
+
+def test_missing_virtual_printer_does_not_block_inbox(tmp_path, monkeypatch):
+    from test_engine import sample
+
+    settings(tmp_path, mode="virtual")
+    folder = tmp_path / "Inbox"
+    folder.mkdir()
+    (folder / "job.pdf").write_bytes(sample().getvalue())
+    changes = FakeChanges(tmp_path)
+
+    def unavailable(self):
+        raise OSError("spooler unavailable")
+
+    monkeypatch.setattr(spool.Guard, "changed", unavailable)
+    launched = []
+    watcher._serve(tmp_path, lambda root: changes, lambda root: launched.append(True))
+    assert launched == [True]
+    assert not (folder / "job.pdf").exists()
+
+
+def test_explicit_wake_allows_retry_after_processor_failure(tmp_path):
+    config = settings(tmp_path)
+    queue = Queue(tmp_path / "jobs")
+    queue.accept_bytes(b"unfinished", config)
+    changes = FakeChanges(tmp_path)
+    changes.events = [lambda: ((tmp_path / "wake").touch(), {"files"})[1]]
+    launches = []
+    watcher._serve(tmp_path, lambda root: changes, lambda root: launches.append(True))
+    assert launches == [True, True]

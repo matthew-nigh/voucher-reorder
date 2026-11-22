@@ -19,11 +19,17 @@ def stopped(root):
 def pending_files(root, settings):
     if not settings.output_ready:
         return ()
-    return tuple(
+    pending = tuple(
         (str(p), p.stat().st_mtime_ns)
         for p in (root / "jobs").glob("*/state.json")
-        if json.loads(p.read_text())["state"] == "queued"
+        if json.loads(p.read_text())["state"] in {"queued", "receiving", "converting", "printing"}
     )
+    if pending:
+        pending += tuple(
+            (name, (root / name).stat().st_mtime_ns if (root / name).exists() else 0)
+            for name in ("wake", "settings.json")
+        )
+    return pending
 
 
 def launch_processor(root):
@@ -70,9 +76,13 @@ def _serve(root, changes_factory=Changes, launch=launch_processor):
                 try:
                     settings = load(root / "settings.json")
                     virtual = settings.mode == "virtual"
-                    attached = changes.watch_printer(virtual)
-                    if virtual and (attached or "printer" in sources):
-                        warning = guard.changed()
+                    try:
+                        attached = changes.watch_printer(virtual)
+                        if virtual and (attached or "printer" in sources):
+                            warning = guard.changed()
+                    except (OSError, ValueError):
+                        warning = "Virtual printer unavailable or needs migration. PDF Inbox remains usable; enable the printer again in Settings."
+                        virtual = False
                     if "printer_error" in sources:
                         warning = "Printer notifications interrupted. Reopen Settings before printing again."
                     if "processor" in sources and child is not None:
