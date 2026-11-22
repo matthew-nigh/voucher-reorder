@@ -9,6 +9,8 @@ $global:printer=$null
 $global:port=$false
 $global:pendingPrinter=$null
 $global:printerReads=0
+$global:latePrinterReads=0
+$global:printerGoneOnce=$false
 $global:busyRemovals=0
 $global:removeCalls=0
 $global:leavePort=$false
@@ -16,6 +18,14 @@ function Start-Sleep { param($Milliseconds) } # Exercise bounded backoff without
 function Get-Printer { param($Name,$ErrorAction)
     if ($global:printerReads -gt 0) {
         $global:printerReads--
+        return $global:pendingPrinter
+    }
+    if (-not $global:printerGoneOnce -and $global:pendingPrinter) {
+        $global:printerGoneOnce=$true
+        return $null
+    }
+    if ($global:latePrinterReads -gt 0) {
+        $global:latePrinterReads--
         return $global:pendingPrinter
     }
     $global:printer
@@ -32,6 +42,8 @@ function Set-PrintConfiguration { param($PrinterName,$PaperSize,$DuplexingMode) 
 function Remove-Printer { param($Name)
     $global:pendingPrinter=$global:printer
     $global:printerReads=3 # Simulate asynchronous queue disappearance.
+    $global:latePrinterReads=if ($global:printer.PortName -eq $target) { 2 } else { 0 }
+    $global:printerGoneOnce=$false
     $global:printer=$null
 }
 function Remove-PrinterPort { param($Name,$ErrorAction)

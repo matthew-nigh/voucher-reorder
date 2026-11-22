@@ -27,7 +27,14 @@ function Remove-DedicatedPort([string]$PortName) {
         $remaining = @(Get-PrinterPort -ErrorAction Stop | Where-Object Name -eq $PortName)
         if (-not $remaining) { return }
         $users = @(Get-Printer -ErrorAction Stop | Where-Object PortName -eq $PortName)
-        if ($users) { throw "Port '$PortName' is still used by: $($users.Name -join ', ')" }
+        if ($users) {
+            # Queue enumeration can lag behind Remove-Printer even after the
+            # name lookup reports it gone. Never remove a port still in use.
+            $lastError = "Port is still used by: $($users.Name -join ', ')"
+            Start-Sleep -Milliseconds $delay
+            $delay = [Math]::Min(1000, $delay * 2)
+            continue
+        }
         if ($remaining.PortMonitor | Where-Object { $_ -notin @('Local Monitor','Local Port') }) {
             throw "Unexpected monitor for dedicated port '$PortName'."
         }
