@@ -58,7 +58,7 @@ def main(action, ui=False):
             print(detail)
         else:
             message(detail)
-        return 0
+        return 1 if remove and result.returncode else 0
     except Exception:
         # No elevation/setup failure may make the no-admin application unusable.
         save(config, replace(settings, mode="pdf"))
@@ -71,7 +71,7 @@ def main(action, ui=False):
             print(detail)
         else:
             message(detail)
-        return 0
+        return 1 if remove else 0
 
 
 if __name__ == "__main__":

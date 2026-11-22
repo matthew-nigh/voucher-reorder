@@ -34,9 +34,16 @@ Write-Output 'Clone configured; beginning real document prints'
 if ($LASTEXITCODE) { throw 'Clone acceptance failed' }
 # Removal also elevates only the built-in PowerShell binary.
 & $python (Join-Path $app 'packaging\mode_setup.py') remove --ui
-if ($LASTEXITCODE) { throw 'Removal failed' }
-if (Get-Printer -Name 'Voucher Reorder' -ErrorAction SilentlyContinue) { throw 'Clone remains after removal' }
-if (Get-PrinterPort -Name (Join-Path $data 'Incoming\job.pdf') -ErrorAction SilentlyContinue) { throw 'Dedicated port remains' }
+$removeExit = $LASTEXITCODE
+$remainingPrinter = @(Get-Printer -ErrorAction Stop | Where-Object Name -eq 'Voucher Reorder')
+$remainingPort = @(Get-PrinterPort -ErrorAction Stop | Where-Object Name -eq (Join-Path $data 'Incoming\job.pdf'))
+if ($removeExit -or $remainingPrinter -or $remainingPort) {
+    Get-Content (Join-Path $data 'mode-status.txt') -ErrorAction SilentlyContinue
+    $remainingPrinter | Format-List * | Out-String | Write-Output
+    $remainingPort | Format-List * | Out-String | Write-Output
+    Get-Service Spooler | Format-List * | Out-String | Write-Output
+    throw "Removal failed: exit=$removeExit; remaining printers=$($remainingPrinter.Count); dedicated ports=$($remainingPort.Count)"
+}
 $p=Start-Process (Join-Path $root 'Uninstall.exe') -ArgumentList '/S' -Wait -PassThru
 if ($p.ExitCode) { throw 'App uninstall failed' }
 Write-Output 'PASS: old queue migration, no-admin fallback, clone create/print/remove, app uninstall'

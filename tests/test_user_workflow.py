@@ -176,6 +176,33 @@ def test_optional_elevation_success_decline_and_failure(tmp_path, monkeypatch, e
     assert saved.offsets[0] == list(config().offsets[0])
 
 
+@pytest.mark.parametrize("outcome", [0, 1, "timeout"])
+def test_removal_reports_failure_and_preserves_retry_marker(tmp_path, monkeypatch, outcome):
+    source = Path(__file__).parents[1] / "packaging/mode_setup.py"
+    spec = importlib.util.spec_from_file_location("test_mode_remove", source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    save(tmp_path / "settings.json", config())
+    marker = tmp_path / "virtual-installed"
+    marker.touch()
+    monkeypatch.setattr(module, "data_dir", lambda: tmp_path)
+    monkeypatch.setattr(module, "stop_worker", lambda *args: None)
+    monkeypatch.setattr(module, "powershell", lambda *args: ["fake-command"])
+    monkeypatch.setattr(module.subprocess, "CREATE_NO_WINDOW", 0, raising=False)
+
+    def run(*args, **kwargs):
+        if outcome == "timeout":
+            raise TimeoutError("spooler did not finish")
+        return SimpleNamespace(returncode=outcome)
+
+    monkeypatch.setattr(module.subprocess, "run", run)
+    assert module.main("remove", ui=True) == (0 if outcome == 0 else 1)
+    assert marker.exists() == (outcome != 0)
+    assert load(tmp_path / "settings.json").mode == "pdf"
+    if outcome == 1:
+        assert "not removed" in (tmp_path / "mode-status.txt").read_text()
+
+
 def test_paper_mismatch_holds_without_submission(tmp_path):
     queue = Queue(tmp_path / "jobs")
     queue.accept_bytes(sample(size=(595, 842)).getvalue(), config())

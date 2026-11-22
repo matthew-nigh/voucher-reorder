@@ -7,6 +7,42 @@ $name = 'Voucher Reorder'
 $driver = 'Microsoft Print To PDF'
 $owner = "VoucherReorder owner=$TargetSid"
 $port = [IO.Path]::GetFullPath($IncomingPath)
+# Bounded retries belong to this explicit setup action, never to the watcher.
+function Wait-PrinterRemoved {
+    $delay = 100
+    for ($attempt = 0; $attempt -lt 30; $attempt++) {
+        $remaining = @(Get-Printer -ErrorAction Stop | Where-Object Name -eq $name)
+        if (-not $remaining) { return }
+        Start-Sleep -Milliseconds $delay
+        $delay = [Math]::Min(1000, $delay * 2)
+    }
+    throw "Printer removal did not finish: $($remaining | ConvertTo-Json -Compress)"
+}
+function Remove-DedicatedPort([string]$PortName) {
+    if ($PortName -eq 'NUL:') { return } # Shared system port, never ours to remove.
+    $delay = 100
+    $lastError = 'Port still listed after removal'
+    for ($attempt = 0; $attempt -lt 30; $attempt++) {
+        # Enumerate with Stop: a query failure must not masquerade as absence.
+        $remaining = @(Get-PrinterPort -ErrorAction Stop | Where-Object Name -eq $PortName)
+        if (-not $remaining) { return }
+        $users = @(Get-Printer -ErrorAction Stop | Where-Object PortName -eq $PortName)
+        if ($users) { throw "Port '$PortName' is still used by: $($users.Name -join ', ')" }
+        if ($remaining.PortMonitor | Where-Object { $_ -notin @('Local Monitor','Local Port') }) {
+            throw "Unexpected monitor for dedicated port '$PortName'."
+        }
+        try {
+            Remove-PrinterPort -Name $PortName -ErrorAction Stop
+        } catch {
+            # Remove-Printer returns before the spooler releases its port handle.
+            $lastError = $_.Exception.Message
+        }
+        if (-not (Get-PrinterPort -ErrorAction Stop | Where-Object Name -eq $PortName)) { return }
+        Start-Sleep -Milliseconds $delay
+        $delay = [Math]::Min(1000, $delay * 2)
+    }
+    throw "Dedicated port '$PortName' remains after 30 removal attempts. Last error: $lastError; port: $($remaining | ConvertTo-Json -Compress)"
+}
 try {
     if ($TargetSid -notmatch '^S-1-5-21-\d+-\d+-\d+-\d+$' -or [IO.Path]::GetFileName($port) -ne 'job.pdf' -or $port.StartsWith('\\')) { throw 'Invalid per-user printer target.' }
     $printer = Get-Printer -Name $name -ErrorAction SilentlyContinue
@@ -15,13 +51,15 @@ try {
         if (Get-PrintJob -PrinterName $name) { throw 'Reconcile and cancel pending jobs before migration.' }
         $oldPort = $printer.PortName
         Remove-Printer -Name $name
-        # NUL: is a shared system port; never remove it. Remove only dedicated unused ports.
-        if ($oldPort -ne 'NUL:' -and -not (Get-Printer | Where-Object PortName -eq $oldPort)) {
-            Remove-PrinterPort -Name $oldPort -ErrorAction SilentlyContinue
-        }
+        Wait-PrinterRemoved
+        Remove-DedicatedPort $oldPort
         $printer = $null
     }
-    if ($Action -eq 'remove') { exit 0 }
+    if ($Action -eq 'remove') {
+        # Also finish a prior removal that deleted the queue but left its port.
+        Remove-DedicatedPort $port
+        exit 0
+    }
     $folder = [IO.Path]::GetDirectoryName($port)
     if (-not (Test-Path -LiteralPath $folder -PathType Container)) { throw 'Incoming folder must be created by the desktop user first.' }
     # Spooler writes as SYSTEM; the desktop user owns the per-user folder.
