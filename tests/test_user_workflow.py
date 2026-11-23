@@ -227,6 +227,7 @@ def test_installer_mode_result_is_only_reported_to_installer(tmp_path, monkeypat
     spec.loader.exec_module(module)
     save(tmp_path / "settings.json", config())
     (tmp_path / "mode-status.txt").write_text("stale status")
+    (tmp_path / "printer-setup-code.txt").write_text("stale code")
     monkeypatch.setattr(module, "data_dir", lambda: tmp_path)
     monkeypatch.setattr(module, "stop_worker", lambda *args: None)
     monkeypatch.setattr(module, "powershell", lambda *args: ["fake-command"])
@@ -237,6 +238,27 @@ def test_installer_mode_result_is_only_reported_to_installer(tmp_path, monkeypat
     assert module.main("setup") == 0
     assert "mode is ready" in capsys.readouterr().out
     assert not (tmp_path / "mode-status.txt").exists()
+    code_file = tmp_path / "printer-setup-code.txt"
+    assert code_file.exists() == (exit_code != 0)
+    if exit_code:
+        assert code_file.read_text() == str(exit_code)
+
+
+def test_installer_setup_exception_records_failure_without_losing_pdf_mode(tmp_path, monkeypatch):
+    source = Path(__file__).parents[1] / "packaging/mode_setup.py"
+    spec = importlib.util.spec_from_file_location("test_mode_install_exception", source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    save(tmp_path / "settings.json", config())
+    monkeypatch.setattr(module, "data_dir", lambda: tmp_path)
+
+    def timeout(*_args):
+        raise TimeoutError
+
+    monkeypatch.setattr(module, "stop_worker", timeout)
+    assert module.main("setup") == 0
+    assert load(tmp_path / "settings.json").mode == "pdf"
+    assert (tmp_path / "printer-setup-code.txt").read_text() == "12"
 
 
 @pytest.mark.parametrize("outcome", [0, 1, "timeout"])

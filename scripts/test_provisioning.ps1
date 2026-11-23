@@ -49,7 +49,8 @@ $python=Join-Path $app 'runtime\python.exe'
 $printer=Get-Printer -Name 'Voucher Reorder' -ErrorAction SilentlyContinue
 if (-not $printer) {
     $mode=(Get-Content (Join-Path $data 'settings.json') -Raw | ConvertFrom-Json).mode
-    throw "Protected-port clone setup failed: printer absent; saved mode=$mode"
+    $code=Get-Content (Join-Path $data 'printer-setup-code.txt') -ErrorAction SilentlyContinue
+    throw "Protected-port clone setup failed: printer absent; saved mode=$mode; setup code=$code"
 }
 if ($printer.DriverName -ne 'Microsoft Print To PDF' -or $printer.PortName -ne $securePort) {
     Get-Content (Join-Path $data 'mode-status.txt') -ErrorAction SilentlyContinue

@@ -18,6 +18,7 @@ def main(action, ui=False):
         return 0
     if action == "setup":
         (root / "mode-status.txt").unlink(missing_ok=True)
+        (root / "printer-setup-code.txt").unlink(missing_ok=True)
     remove = action in ("pdf", "remove")
     settings = load(config)
     installed_marker = root / "virtual-installed"
@@ -32,6 +33,8 @@ def main(action, ui=False):
             check=False,
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
+        if action == "setup" and result.returncode:
+            (root / "printer-setup-code.txt").write_text(str(result.returncode), encoding="ascii")
         if not remove and result.returncode == 0:
             installed_marker.touch()
             (root / "secure-port-installed").touch()
@@ -67,6 +70,8 @@ def main(action, ui=False):
         return 1 if remove and result.returncode else 0
     except Exception:
         # No elevation/setup failure may make the no-admin application unusable.
+        if action == "setup":
+            (root / "printer-setup-code.txt").write_text("12", encoding="ascii")
         save(config, replace(settings, mode="pdf"))
         initialized.touch()
         if action not in ("remove", "setup"):

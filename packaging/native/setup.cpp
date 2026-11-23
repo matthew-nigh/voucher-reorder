@@ -51,11 +51,13 @@ static void remove_queue(HANDLE printer) {
     vr::check(DeletePrinter(printer));
 }
 int wmain(int argc, wchar_t** argv) {
+    int stage = 100;
     try {
         // Only fixed install/remove verbs and a canonical account SID cross UAC.
         vr::check(argc == 3);
         std::wstring action(argv[1]), sid(argv[2]);
         vr::check((action == L"install" || action == L"remove") && vr::account_sid(sid));
+        stage = 110;
         vr::LockedTree code(vr::program()); vr::protected_image();
         vr::LockedTree system(vr::system_directory());
         auto dll = vr::system_directory() + L"\\VoucherReorderPort.dll";
@@ -65,6 +67,7 @@ int wmain(int argc, wchar_t** argv) {
         const auto port = L"VoucherReorder:" + sid, owner = L"VoucherReorder owner=" + sid;
         PRINTER_DEFAULTSW defaults{nullptr, nullptr, PRINTER_ALL_ACCESS};
         HANDLE printer = nullptr;
+        stage = 120;
         if (OpenPrinterW(const_cast<LPWSTR>(name), &printer, &defaults)) {
             auto data = printer_info(printer); auto info = reinterpret_cast<PRINTER_INFO_2W*>(data.data());
             bool ours = info->pComment && owner == info->pComment && info->pDriverName &&
@@ -78,9 +81,11 @@ int wmain(int argc, wchar_t** argv) {
             // Old Local Ports are inert once detached. Leave their registry entry
             // for admin maintenance rather than touching shared/foreign ports.
         } else vr::check(GetLastError() == ERROR_INVALID_PRINTER_NAME);
+        stage = 130;
         wchar_t previous[256]; DWORD size = sizeof(previous);
         LONG status = RegGetValueW(HKEY_LOCAL_MACHINE, key, L"OwnerSid", RRF_RT_REG_SZ, nullptr, previous, &size);
         vr::check(status == ERROR_FILE_NOT_FOUND || (status == ERROR_SUCCESS && sid == previous));
+        stage = 140;
         enable_driver_privilege();
         if (action == L"remove") {
             // No service restart. An in-use monitor stays installed for maintenance.
@@ -88,6 +93,7 @@ int wmain(int argc, wchar_t** argv) {
                 vr::check(GetLastError() == ERROR_UNKNOWN_PRINT_MONITOR);
             return 0;
         }
+        stage = 150;
         vr::LockedTree spool(vr::spool(), true, L"BU");
         vr::LockedTree incoming(vr::spool() + L"\\" + sid, true, sid);
         HKEY registry = nullptr;
@@ -95,6 +101,7 @@ int wmain(int argc, wchar_t** argv) {
         status = RegSetValueExW(registry, L"OwnerSid", 0, REG_SZ, reinterpret_cast<const BYTE*>(sid.c_str()),
             static_cast<DWORD>((sid.size() + 1) * sizeof(wchar_t)));
         RegCloseKey(registry); vr::check(status == ERROR_SUCCESS);
+        stage = 160;
         MONITOR_INFO_2W monitorInfo{const_cast<LPWSTR>(monitor), const_cast<LPWSTR>(L"Windows x64"), const_cast<LPWSTR>(L"VoucherReorderPort.dll")};
         if (!AddMonitorW(nullptr, 2, reinterpret_cast<LPBYTE>(&monitorInfo)))
             vr::check(GetLastError() == ERROR_PRINT_MONITOR_ALREADY_INSTALLED);
@@ -104,13 +111,18 @@ int wmain(int argc, wchar_t** argv) {
         info.pDriverName = const_cast<LPWSTR>(driver); info.pComment = const_cast<LPWSTR>(owner.c_str());
         info.pPrintProcessor = const_cast<LPWSTR>(L"winprint"); info.pDatatype = const_cast<LPWSTR>(L"RAW");
         info.pSecurityDescriptor = security.value; info.Attributes = PRINTER_ATTRIBUTE_LOCAL;
+        stage = 170;
         printer = AddPrinterW(nullptr, 2, reinterpret_cast<LPBYTE>(&info)); vr::check(printer != nullptr);
+        stage = 180;
         try { configure_paper(printer); }
         catch (...) { DeletePrinter(printer); ClosePrinter(printer); throw; }
         ClosePrinter(printer);
         return 0;
     } catch (...) {
-        std::wcerr << L"Printer setup refused. Verify the protected package, owner, pending jobs and Microsoft Print To PDF driver. PDF Inbox remains available.\n";
-        return 1;
+        DWORD error = GetLastError();
+        std::wcerr << L"Printer setup refused at stage " << stage << L" (Windows error " << error
+                   << L"). PDF Inbox remains available.\n";
+        // The caller records only a numeric code; no path or job data crosses UAC.
+        return stage * 10000 + static_cast<int>(error % 10000);
     }
 }
