@@ -1,4 +1,4 @@
-"""No-window notification broker; no timers, polling or PDF parsing."""
+"""No-window notification broker; kernel events plus a daily retention deadline."""
 
 import json
 import subprocess

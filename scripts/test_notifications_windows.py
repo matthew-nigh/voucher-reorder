@@ -31,7 +31,8 @@ def tracked(root):
     return launch(root)
 wait = watcher.Changes.wait
 def waiting(self, timeout=None):
-    assert timeout is None, "Broker must use infinite waits"
+    # The retention sweep needs a daily deadline. Reject short polling waits.
+    assert timeout is not None and 23 * 3600 <= timeout <= 24 * 3600, timeout
     # Metrics themselves generate an ignored directory event, so don't write here.
     result = wait(self, timeout)
     if "processor" in result:

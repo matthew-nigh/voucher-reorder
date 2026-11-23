@@ -96,7 +96,7 @@ def test_idle_virtual_watcher_blocks_without_repeated_probes_or_spawns(tmp_path,
     watcher._serve(tmp_path, lambda root: changes)
     assert len(probes) == 1
     assert len(changes.waits) == 3
-    assert all(0 < wait <= 86400 for wait in changes.waits)
+    assert all(23 * 3600 <= wait <= 24 * 3600 for wait in changes.waits)
     assert json.loads((tmp_path / "watcher.json").read_text())["state"] == "stopped"
 
 
