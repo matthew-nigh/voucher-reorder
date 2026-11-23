@@ -66,7 +66,10 @@ inline void verify(HANDLE h, const std::wstring& path, bool ancestor = false) {
     check(!(info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT));
     check((info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || info.nNumberOfLinks == 1);
     wchar_t finalPath[32768];
-    DWORD n = GetFinalPathNameByHandleW(h, finalPath, 32768, FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+    // Every component was opened without following reparses. The opened name
+    // needs no further normalization, which can require traversal permission
+    // on an ancestor even though this handle is already valid.
+    DWORD n = GetFinalPathNameByHandleW(h, finalPath, 32768, FILE_NAME_OPENED | VOLUME_NAME_DOS);
     check(n && n < 32768);
     auto expected = L"\\\\?\\" + path;
     check(_wcsicmp(expected.c_str(), finalPath) == 0);
