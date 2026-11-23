@@ -96,11 +96,11 @@ def _serve(root, changes_factory=Changes, launch=launch_processor):
                         changes.child = None
                     if settings.output_ready:
                         if virtual:
-                            for source in sorted(incoming_folder().glob("*.pdf")):
+                            for source in sorted(incoming_folder().glob("*.ps")):
                                 try:
                                     queue.accept_file(source, settings, protected_spool=True)
                                 except (OSError, ValueError):
-                                    warning = "Incoming PDF is unavailable. Use Retry pickup in Job status if needed."
+                                    warning = "Incoming print job is unavailable. Use Retry pickup in Job status if needed."
                         if settings.watch_inbox:
                             warning = inbox.scan(queue, settings) or warning
                         pending = pending_files(root, settings)

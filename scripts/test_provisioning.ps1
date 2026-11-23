@@ -52,7 +52,7 @@ if (-not $printer) {
     $code=Get-Content (Join-Path $data 'printer-setup-code.txt') -ErrorAction SilentlyContinue
     throw "Protected-port clone setup failed: printer absent; saved mode=$mode; setup code=$code"
 }
-if ($printer.DriverName -ne 'Microsoft Print To PDF' -or $printer.PortName -ne $securePort) {
+if ($printer.DriverName -ne 'MS Publisher Imagesetter' -or $printer.PortName -ne $securePort) {
     Get-Content (Join-Path $data 'mode-status.txt') -ErrorAction SilentlyContinue
     throw 'Protected-port clone setup failed'
 }

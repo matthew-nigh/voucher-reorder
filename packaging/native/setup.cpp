@@ -5,7 +5,9 @@
 
 static const wchar_t* name = L"Voucher Reorder";
 static const wchar_t* monitor = L"Voucher Reorder Secure Port";
-static const wchar_t* driver = L"Microsoft Print To PDF";
+// This inbox v3 driver can bind to our protected port monitor. The v4
+// Microsoft Print To PDF driver rejects third-party monitors.
+static const wchar_t* driver = L"MS Publisher Imagesetter";
 static const wchar_t* key = L"SOFTWARE\\VoucherReorderPrinter";
 static std::vector<BYTE> printer_info(HANDLE printer) {
     DWORD bytes = 0; GetPrinterW(printer, 2, nullptr, 0, &bytes);
@@ -71,7 +73,7 @@ int wmain(int argc, wchar_t** argv) {
         if (OpenPrinterW(const_cast<LPWSTR>(name), &printer, &defaults)) {
             auto data = printer_info(printer); auto info = reinterpret_cast<PRINTER_INFO_2W*>(data.data());
             bool ours = info->pComment && owner == info->pComment && info->pDriverName &&
-                (std::wstring(info->pDriverName) == driver || std::wstring(info->pDriverName) == L"MS Publisher Imagesetter");
+                (std::wstring(info->pDriverName) == driver || std::wstring(info->pDriverName) == L"Microsoft Print To PDF");
             if (!ours) { ClosePrinter(printer); vr::check(false); }
             // Re-create to remove sharing/retention and migrate the old writable port.
             try { remove_queue(printer); } catch (...) { ClosePrinter(printer); throw; }

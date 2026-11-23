@@ -1,22 +1,27 @@
 """Protected spool handoff: independent offline arrivals and crash recovery."""
 
+import shutil
 import time
 import uuid
 from pathlib import Path
 
 import pytest
-from test_engine import sample
 from test_notifications import FakeChanges, settings
 
 from voucher_reorder import spool, watcher
 from voucher_reorder.config import Settings, atomic_json
 from voucher_reorder.queue import RETENTION, Queue
 
+POSTSCRIPT = (
+    b"%!PS-Adobe-3.0\n<< /PageSize [612 792] >> setpagedevice\n"
+    b"/Helvetica findfont 14 scalefont setfont\n72 720 moveto (FAKE VOID) show\nshowpage\n"
+)
+
 
 def arrival(folder, data=None):
     folder.mkdir(exist_ok=True)
-    source = folder / f"{uuid.uuid4()}.pdf"
-    source.write_bytes(data or sample().getvalue())
+    source = folder / f"{uuid.uuid4()}.ps"
+    source.write_bytes(data or POSTSCRIPT)
     return source
 
 
@@ -48,7 +53,8 @@ def test_handoff_copies_across_volumes_without_renaming_protected_source(tmp_pat
     monkeypatch.setattr(Path, "rename", refuse_source_rename)
     queue = Queue(tmp_path / "jobs")
     job = queue.accept_file(source, Settings(), protected_spool=True)
-    assert (job.parent / "input.pdf").read_bytes() == original
+    assert (job.parent / "input.ps").read_bytes() == original
+    assert queue.read(job)["kind"] == "ps"
     assert not source.exists()
     assert "pending_spool" not in queue.read(job)
 
@@ -96,25 +102,52 @@ def test_crash_during_copy_or_before_queue_commit_recovers_once(tmp_path, copied
             "pending_spool": str(source),
             "settings": {},
             "document": "fake",
-            "kind": "pdf",
+            "kind": "ps",
             "digest": "",
         },
     )
-    (folder / ("input.pdf" if copied else "input.partial")).write_bytes(payload if copied else b"partial")
+    (folder / ("input.ps" if copied else "input.partial")).write_bytes(payload if copied else b"partial")
     job = queue.accept_file(source, Settings(), protected_spool=True)
     assert len(queue.jobs()) == 1
     assert queue.read(job)["state"] == "queued"
-    assert (folder / "input.pdf").read_bytes() == payload
+    assert (folder / "input.ps").read_bytes() == payload
     assert not source.exists()
 
 
-@pytest.mark.parametrize("name", ["job.pdf", "..pdf", "arbitrary.pdf"])
+@pytest.mark.parametrize("name", ["job.ps", "..ps", "arbitrary.ps", "arbitrary.pdf"])
 def test_shared_or_arbitrary_spool_names_are_refused(tmp_path, name):
     source = tmp_path / name
-    source.write_bytes(sample().getvalue())
+    source.write_bytes(POSTSCRIPT)
     with pytest.raises(ValueError, match="spool filename"):
         Queue(tmp_path / "jobs").accept_file(source, Settings(), protected_spool=True)
     assert source.exists()
+
+
+def test_protected_spool_requires_postscript_header(tmp_path):
+    source = arrival(tmp_path / "protected", b"%PDF-1.4\n%%EOF\n")
+    with pytest.raises(ValueError, match="PostScript"):
+        Queue(tmp_path / "jobs").accept_file(source, Settings(), protected_spool=True)
+    assert source.exists()
+
+
+def test_protected_postscript_reaches_pdf_output(tmp_path):
+    if not shutil.which("gs"):
+        pytest.skip("Ghostscript not installed")
+    from pypdf import PdfReader
+
+    from voucher_reorder.worker import process_one
+
+    output = tmp_path / "output"
+    config = Settings(mode="virtual", output_mode="pdf", output_folder=str(output))
+    source = arrival(tmp_path / "protected")
+    queue = Queue(tmp_path / "jobs")
+    job = queue.accept_file(source, config, protected_spool=True)
+    process_one(queue, config)
+    assert queue.read(job)["state"] == "sent"
+    assert not source.exists()
+    assert not (job.parent / "input.ps").exists()
+    (pdf,) = output.glob("*.pdf")
+    assert len(PdfReader(pdf).pages) == 1
 
 
 def test_old_fixed_port_marker_requires_migration(tmp_path):

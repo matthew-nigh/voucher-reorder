@@ -118,7 +118,7 @@ queues and any paper already printed. Shared Microsoft runtimes/drivers remain.
 
 ```text
 PDF mode:     existing PDF output -> watched Inbox
-Virtual mode: app -> Microsoft Print To PDF clone -> protected spool/<UUID>.pdf
+Virtual mode: app -> MS Publisher Imagesetter -> protected spool/<UUID>.ps
 Both:         native event broker -> unique private job -> bounded PDF processor
 Output:       PDF folder, or PDFium vector EMF -> checked GDI pages -> printer
 ```
@@ -141,13 +141,13 @@ refused rather than having their ACLs repaired. Distribution is still unsigned;
 independent administrator verification remains essential.
 
 The owner-restricted, unshared **Voucher Reorder** queue uses the built-in
-**Microsoft Print To PDF** driver and the native **Voucher Reorder Secure Port**
+**MS Publisher Imagesetter** driver and the native **Voucher Reorder Secure Port**
 monitor. The port name is `VoucherReorder:<desktop SID>`, including alternate-admin
 setup. The monitor writes only beneath
 `%ProgramFiles%\VoucherReorderPrinter\Spool\<desktop SID>`, with administrator/SYSTEM
 ownership and no user directory-write rights. It holds no-reparse directory
 handles, checks directory identities and ACLs, creates a UUID file with `CREATE_NEW`, flushes
-it, and publishes `.pdf` without replacement. Document titles and application
+it, and publishes `.ps` without replacement. Document titles and application
 output filenames never select the destination. Completed files grant the desktop
 user read/delete access; the privileged monitor never writes into the profile.
 
@@ -159,6 +159,8 @@ resumes when the user signs in and the watcher starts. Each input is limited to
 100 MiB; unclaimed spool files and crash `.partial` files have no aggregate size or
 age limit yet. Administrators must reconcile these before cleanup. Native driver,
 ACL, UAC and crash acceptance remains required; see TESTING_ON_WINDOWS.md.
+The bounded worker converts PostScript to PDF with bundled Ghostscript under the
+desktop user's account before validation and reordering.
 `/S /VIRTUAL=1` opts in after helper deployment; plain `/S` needs no administrator.
 
 Upgrade removes the old HKCU worker autostart and recognized owned scheduled
@@ -241,7 +243,8 @@ programs. Building the protected printer package requires the x64 MSVC compiler
 and Windows SDK on Windows, or `g++-mingw-w64-x86-64-posix` on Linux.
 `--stage-only` prepares files and builds that native package; `--version 0.2.6` overrides the packaging
 version for upgrade tests (no tag/release is created). Installations need no network
-in PDF mode. Virtual setup uses the already available Windows PDF driver; policy or missing-driver failures fall back to PDF mode.
+in PDF mode. Virtual setup uses the inbox Windows v3 MS Publisher Imagesetter driver;
+policy or missing-driver failures fall back to PDF mode.
 
 [CI](.github/workflows/build.yml) runs Linux tests; builds on `windows-2022`;
 checks all 36 source/output mappings, simulated 100/150/200% UI scaling and small

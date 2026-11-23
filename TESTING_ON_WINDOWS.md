@@ -14,13 +14,13 @@ The workflow runs pytest and ruff, builds Setup.exe/PrinterDeploy.exe/source/SHA
 - A real standard-user install, upgrade from v0.2.0, old-worker shutdown and Run
   entry migration, settings/held-job preservation, repair, downgrade refusal and removal.
 - Native ACL/reparse/final-path rejection and restricted-token write denial.
-- Real legacy queue migration to **Microsoft Print To PDF**, the protected
+- Real legacy queue migration to **MS Publisher Imagesetter**, the protected
   `VoucherReorder:<SID>` port, owner restriction and removal.
 - `scripts/test_clone_printer.ps1` prints a text file with the ordinary WinForms
   `PrintDocument` path to **Voucher Reorder**. It supplies neither an output file
   nor `PrintToFile`, and has no UI to answer a Save As dialog. It requires one
   one-page and two offline back-to-back ten-page jobs to reach unique durable jobs,
-  verifies two independent protected PDFs before restart, then page counts and
+  verifies two independent protected PostScript files before restart, then page counts and
   deletion after success.
   The CI step has a timeout so a hidden Save As dialog fails rather than hangs.
 - Six consecutive ten-page output jobs, vector content/page IDs, bounded memory,
@@ -29,8 +29,8 @@ The workflow runs pytest and ruff, builds Setup.exe/PrinterDeploy.exe/source/SHA
   windows, PDF output, and asynchronous optional setup. The Settings title bar,
   taskbar, Start shortcut and installer use the printer icon.
 
-The hosted runner already supports Microsoft's PDF driver and printer creation
-in prior output tests. Clone tests are required, not silently skipped. If a future
+The historical v0.2.0 fixture uses the inbox MS Publisher Imagesetter driver.
+Clone tests are required, not silently skipped. If a future
 runner removes that driver or disallows printer creation, record the exact Windows
 error in CI and qualify on a Windows 10/11 VM before claiming support. Interactive
 Notepad/Edge/QuickBooks and alternate-credential UAC remain manual tests below.
@@ -91,14 +91,14 @@ kernel waits. The active document supervisor still enforces resource deadlines.
    per-user `request_printer.ps1`/old `printer.ps1` fixture and verify the installed
    helper never reads it. Standard users must be unable to modify the helper,
    monitor, protected spool directories or another user's completed PDFs.
-3. Inspect `Get-Printer` and `Get-PrinterPort`: built-in Microsoft Print To PDF,
+3. Inspect `Get-Printer` and `Get-PrinterPort`: MS Publisher Imagesetter,
    `VoucherReorder:<SID>`, monitor **Voucher Reorder Secure Port**, unshared and
    owner-restricted. The default printer and unrelated queues must not change.
-   Missing Microsoft Print To PDF must leave usable PDF mode; the administrator
-   enables the Windows feature separately.
+   Missing MS Publisher Imagesetter must leave usable PDF mode; the administrator
+   enables the inbox driver separately.
 4. Print from Notepad, Edge and QuickBooks without Save As. Send two ten-page jobs
    back to back, including with the watcher stopped and while signed out. Verify
-   distinct UUID PDFs in `%ProgramFiles%\VoucherReorderPrinter\Spool\<SID>` and all 20 pages
+   distinct UUID PostScript files in `%ProgramFiles%\VoucherReorderPrinter\Spool\<SID>` and all 20 pages
    after restarting pickup. No pause/resume race is part of job isolation now.
 5. In a disposable VM, preplant junctions at the spool root, SID directory, and
    helper directory; each operation must fail without touching an external benign

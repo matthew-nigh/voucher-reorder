@@ -19,7 +19,7 @@ ACLs and verifies them. The per-user launcher elevates the installed
 it no longer elevates PowerShell or reads a per-user script into privileged code.
 The helper also refuses execution outside its protected installed location.
 
-The native monitor writes UUID-named jobs under an administrator/SYSTEM-owned
+The native monitor writes UUID-named PostScript jobs under an administrator/SYSTEM-owned
 Program Files spool, never into a user-controlled folder. It rejects reparse points,
 untrusted owners/ACLs and mismatched directory identities and holds ancestor handles without
 delete sharing. Files use exclusive `CREATE_NEW`, are flushed, and are published
@@ -28,8 +28,10 @@ unprivileged handoff copies into the durable queue and records the UUID before
 acknowledging the source, including across volumes and after restart. The old
 pause/resume fixed-file guard is removed. Existing fixed-port installations fall
 back to PDF mode until explicitly migrated. Removal still never restarts Spooler.
+The v3 MS Publisher Imagesetter driver produces the PostScript; the bounded
+Ghostscript worker converts it to PDF under the desktop user's account.
 
-**Residual risk:** the new privileged native code and Microsoft PDF driver/monitor
+**Residual risk:** the new privileged native code and v3 printer driver/monitor
 integration require Windows 10/11 UAC, ACL, reparse, offline burst and crash
 qualification. Native acceptance harnesses are supplied but were not run on this
 Linux host. Cross-compilation and portable tests do not establish those results.

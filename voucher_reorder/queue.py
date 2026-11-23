@@ -30,7 +30,8 @@ class Queue:
             with self.transaction():
                 for job in self.jobs():
                     if self.read(job)["state"] == "receiving":
-                        if (job.parent / "input.pdf").exists():
+                        kind = self.read(job).get("kind", "pdf")
+                        if (job.parent / f"input.{kind}").exists():
                             self.update(job, "queued", "Recovered completed pickup")
                         else:
                             shutil.rmtree(job.parent)
@@ -119,15 +120,17 @@ class Queue:
         """
         from .inbox import exclusive_read
 
+        kind = "ps" if protected_spool else "pdf"
+        input_name = f"input.{kind}"
         if protected_spool and not re.fullmatch(
-            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.pdf", source.name
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.ps", source.name
         ):
             raise ValueError("Invalid protected spool filename")
         attributes = source.lstat()
         if not stat.S_ISREG(attributes.st_mode) or (
             getattr(attributes, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
         ):
-            raise ValueError("Watched PDFs must be regular files.")
+            raise ValueError("Watched print jobs must be regular files.")
         with (
             self.lock,
             FileLock(self.root.parent / "queue.lock"),
@@ -138,7 +141,7 @@ class Queue:
                 existing = folder / "state.json"
                 if existing.exists():
                     state = self.read(existing)
-                    if state["state"] != "receiving" or (folder / "input.pdf").exists():
+                    if state["state"] != "receiving" or (folder / input_name).exists():
                         if state["state"] == "receiving":
                             self.update(existing, "queued", "Recovered completed pickup")
                         self.reconcile(existing, self.read(existing))
@@ -149,12 +152,15 @@ class Queue:
             stream.seek(0, 2)
             size = stream.tell()
             if not 0 < size <= MAX_JOB:
-                raise ValueError("PDF is empty or exceeds 100 MiB; check the watched folder.")
+                raise ValueError("Print job is empty or exceeds 100 MiB; check the watched folder.")
             stream.seek(0)
             header = stream.read(5)
             stream.seek(max(0, size - 2048))
-            if header != b"%PDF-" or b"%%EOF" not in stream.read(2048):
+            trailer = stream.read(2048)
+            if kind == "pdf" and (header != b"%PDF-" or b"%%EOF" not in trailer):
                 raise ValueError("PDF is incomplete; finish saving, then use Retry pickup in Job status.")
+            if kind == "ps" and not header.startswith(b"%!PS"):
+                raise ValueError("Protected PostScript job has an invalid header.")
             if sum(self.read(j)["state"] in {"queued", "held"} for j in self.jobs()) >= 100:
                 raise ValueError("The waiting queue is full. Open Job status.")
             total = sum(p.stat().st_size for p in self.root.glob("*/input.*"))
@@ -169,9 +175,9 @@ class Queue:
                 "state": "receiving",
                 "created": time.time(),
                 "digest": "",
-                "kind": "pdf",
+                "kind": kind,
                 "settings": asdict(settings),
-                "message": "Claiming PDF",
+                "message": "Claiming print job",
                 "document": title,
             }
             if protected_spool:
@@ -187,9 +193,9 @@ class Queue:
                         shutil.copyfileobj(stream, target)
                         target.flush()
                         os.fsync(target.fileno())
-                    (folder / "input.partial").rename(folder / "input.pdf")
+                    (folder / "input.partial").rename(folder / input_name)
                 else:
-                    source.rename(folder / "input.pdf")
+                    source.rename(folder / input_name)
             except BaseException:
                 shutil.rmtree(folder)
                 raise

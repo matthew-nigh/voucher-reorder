@@ -55,17 +55,17 @@ try {
     Send-Document 10 'FAKE burst A'
     Send-Document 10 'FAKE burst B'
     $deadline=[DateTime]::UtcNow.AddSeconds(60)
-    while (@(Get-ChildItem -LiteralPath $incoming -Filter '*.pdf').Count -ne 2) {
-        if ([DateTime]::UtcNow -gt $deadline) { throw 'Offline burst did not preserve two independent PDFs' }
+    while (@(Get-ChildItem -LiteralPath $incoming -Filter '*.ps').Count -ne 2) {
+        if ([DateTime]::UtcNow -gt $deadline) { throw 'Offline burst did not preserve two independent PostScript jobs' }
         Start-Sleep -Milliseconds 100
     }
     & $python $app register
     if ($LASTEXITCODE) { throw 'Could not restart watcher' }
     Wait-Sent 3
-    & $python -c "from pathlib import Path; from pypdf import PdfReader; from voucher_reorder.config import data_dir; r=data_dir(); assert sorted(len(PdfReader(p).pages) for p in (r/'CI-output').glob('*.pdf'))==[1,10,10]; assert not list((r/'jobs').glob('*/input.pdf')); from voucher_reorder.spool import incoming_folder; assert not list(incoming_folder().glob('*.pdf'))"
+    & $python -c "from pypdf import PdfReader; from voucher_reorder.config import data_dir; r=data_dir(); assert sorted(len(PdfReader(p).pages) for p in (r/'CI-output').glob('*.pdf'))==[1,10,10]; assert not list((r/'jobs').glob('*/input.ps')); assert not list((r/'jobs').glob('*/input.pdf')); from voucher_reorder.spool import incoming_folder; assert not list(incoming_folder().glob('*.ps')); assert not list(incoming_folder().glob('*.pdf'))"
     if ($LASTEXITCODE) { throw 'Missing pages, overwritten input, or payload not deleted' }
     if (Test-Path (Join-Path $data 'printer-warning.json')) { throw (Get-Content (Join-Path $data 'printer-warning.json') -Raw) }
-    Write-Output 'PASS: Microsoft Print To PDF protected port, no output filename/dialog, three unique jobs (1/10/10 pages), delete after success'
+    Write-Output 'PASS: MS Publisher Imagesetter protected port, no output filename/dialog, three unique jobs (1/10/10 pages), delete after success'
 } finally {
     & $python $app stop
 }

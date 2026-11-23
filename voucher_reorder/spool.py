@@ -56,7 +56,7 @@ class Guard:
             printer = c.cast(metadata, c.POINTER(PrinterInfo)).contents
             if (
                 printer.comment != f"VoucherReorder owner={_owner_sid()}"
-                or printer.driver != "Microsoft Print To PDF"
+                or printer.driver != "MS Publisher Imagesetter"
                 or printer.attributes & (0x8 | 0x100)  # shared / keep printed jobs
                 or printer.port != f"VoucherReorder:{_owner_sid()}"
             ):

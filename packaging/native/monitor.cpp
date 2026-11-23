@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// No PDF parsing, user paths, executable launches, or network endpoints.
+// No PostScript parsing, user paths, executable launches, or network endpoints.
 #include "secure.hpp"
 #include <winspool.h>
 // The Windows SDK declares this entry point with C++ linkage, while the spooler
@@ -42,7 +42,7 @@ struct Port {
     bool failed = false;
     explicit Port(std::wstring s) : sid(std::move(s)) {}
     void reset() {
-        file.reset(); // An incomplete .partial is never admitted as a PDF.
+        file.reset(); // An incomplete .partial is never admitted as PostScript.
         folder.reset(); root.reset();
         if (printer) { ClosePrinter(printer); printer = nullptr; }
         bytes = 0; job = 0; failed = false;
@@ -53,7 +53,7 @@ static BOOL WINAPI enum_ports(HANDLE, LPWSTR, DWORD level, LPBYTE data, DWORD si
     *count = 0; *needed = 0;
     try {
         auto name = L"VoucherReorder:" + configured_sid();
-        std::wstring monitor(monitorName), description(L"Protected unique PDF jobs");
+        std::wstring monitor(monitorName), description(L"Protected unique PostScript jobs");
         DWORD structure = level == 1 ? sizeof(PORT_INFO_1W) : sizeof(PORT_INFO_2W);
         if (level != 1 && level != 2) { SetLastError(ERROR_INVALID_LEVEL); return FALSE; }
         *needed = structure + static_cast<DWORD>((name.size() + 1) * sizeof(wchar_t));
@@ -92,7 +92,7 @@ static BOOL WINAPI start_doc(HANDLE handle, LPWSTR printer, DWORD job, DWORD lev
         RPC_WSTR text = nullptr; vr::check(UuidToStringW(&uuid, &text) == RPC_S_OK);
         std::wstring token(reinterpret_cast<wchar_t*>(text)); RpcStringFreeW(&text);
         p->partial = folder + L"\\" + token + L".partial";
-        p->ready = folder + L"\\" + token + L".pdf";
+        p->ready = folder + L"\\" + token + L".ps";
         vr::Descriptor sd(vr::directory_acl());
         SECURITY_ATTRIBUTES sa{sizeof(sa), sd.value, FALSE};
         p->file = std::make_unique<vr::Handle>(CreateFileW(p->partial.c_str(), GENERIC_WRITE | DELETE | WRITE_DAC,
