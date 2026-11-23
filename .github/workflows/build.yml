@@ -99,6 +99,10 @@ jobs:
         shell: powershell
         timeout-minutes: 3
         run: scripts/probe_pdf_local_port.ps1
+      - name: Measure hypothetical PDF Local Port overlap
+        shell: powershell
+        timeout-minutes: 8
+        run: scripts/probe_pdf_overlap.ps1
       - name: Exercise native protected path and ACL rejection
         timeout-minutes: 2
         shell: powershell
