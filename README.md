@@ -14,11 +14,13 @@ on your QuickBooks/printer before putting live check stock in the tray.
 Download `VoucherReorder-0.2.6-Setup.exe` from the PR's **Actions artifact** (or a
 future tagged Release). Run it normally. Python and PDF tools are included.
 The source archive and SHA256SUMS.txt are only for building from source or verifying
-the download; there is no separate Provisioning executable.
+the download. Virtual printing additionally requires the separate
+`VoucherReorder-0.2.6-PrinterDeploy.exe`, verified and deployed by an administrator
+from protected staging as described in TESTING_ON_WINDOWS.md.
 
 | Mode | What you do in QuickBooks | Administrator needed? |
 | --- | --- | --- |
-| **Virtual printer — optional** | Print to **Voucher Reorder**; the app reorders and forwards automatically. No PDF Save dialog. | Only to create/remove the clone using built-in Windows PowerShell printer tools in one UAC elevation. No unsigned executable runs elevated. |
+| **Virtual printer — optional** | Print to **Voucher Reorder**; the app reorders and forwards automatically. No PDF Save dialog. | Administrator deploys the verified native helper first; enabling/removing the clone then elevates that protected executable. |
 | **PDF handoff — default** | Print to an **already available** Microsoft Print to PDF, then save in the Inbox shown in the app. Alternatively save/export a PDF elsewhere and click **Print a PDF**. | **No** admin access to install, upgrade, run or remove the per-user app. |
 
 Declining UAC, lacking credentials, a blocked driver, or a failed optional setup
@@ -27,7 +29,7 @@ leaves a working PDF-mode app. Settings clearly shows the active mode and has
 printer removal still switches to PDF mode; the dormant Windows printer remains
 until an administrator removes it. Setup runs in the background with a visible
 status/progress indicator; its buttons are disabled until success or failure is
-reported. It still uses exactly one UAC prompt. The app never changes your Windows default printer.
+reported. Each enable/remove action uses one UAC prompt after administrator deployment. The app never changes your Windows default printer.
 
 PDF mode adds a Save step; it cannot hide Windows' Print to PDF filename dialog.
 If that Windows feature or your physical printer driver is missing, enabling or
@@ -116,7 +118,7 @@ queues and any paper already printed. Shared Microsoft runtimes/drivers remain.
 
 ```text
 PDF mode:     existing PDF output -> watched Inbox
-Virtual mode: app -> Microsoft Print To PDF clone -> Incoming/job.pdf
+Virtual mode: app -> Microsoft Print To PDF clone -> protected spool/<UUID>.pdf
 Both:         native event broker -> unique private job -> bounded PDF processor
 Output:       PDF folder, or PDFium vector EMF -> checked GDI pages -> printer
 ```
@@ -127,28 +129,37 @@ There are no background polling loops, timers, heartbeats, or periodic process
 launches. PDF parsing and printing run only for a job; the processor drains the
 queue and exits. Job status reads persisted records, not a heartbeat.
 
-Optional setup elevates only Windows' signed `powershell.exe`, once, with a
-snapshot of the printer commands. `Add-PrinterPort` and `Add-Printer` create an
-owner-restricted, unshared **Voucher Reorder** printer using the built-in
-**Microsoft Print To PDF** driver. Its local port is the literal absolute path
-`%LOCALAPPDATA%\VoucherReorder\Incoming\job.pdf`, not `FILE:` or `PORTPROMPT:`.
-That fixed port supplies the filename, so ordinary application printing needs no
-Save As dialog. The user's data path is captured before elevation, including when
-a different administrator supplies credentials. No provisioning executable,
-signing setup, security-policy change, or runtime download is performed.
-`/S /VIRTUAL=1` opts in; plain `/S` needs no administrator access.
+Optional setup elevates `%ProgramFiles%\VoucherReorderPrinter\PrinterSetup.exe`
+directly. It accepts only install/remove and the desktop account SID. No script,
+interpreter command, output path, or per-user dependency runs elevated. An
+administrator first verifies and runs the separate PrinterDeploy package from
+admin-protected staging; deployment compares the installed helper and monitor
+bytes with its embedded resources. The monitor DLL lives in System32 as required
+by Windows AddMonitor; the setup executable lives in Program Files. Existing
+writable or redirected paths are
+refused rather than having their ACLs repaired. Distribution is still unsigned;
+independent administrator verification remains essential.
 
-The broker opens an arrival denying read/write sharing, checks PDF header and
-EOF, then atomically renames it while holding that handle. Timestamp, UUID, and
-sanitized document name/job ID (when spooler metadata is available) distinguish
-jobs. Structural/vector validation runs in the bounded processor before printing.
-Spooler events pause later jobs until pickup and resume only jobs the broker held.
-An observed overlap or inability to pause is persisted in Job status. **A fixed
-file port cannot guarantee lossless unattended bursts if the watcher is stopped,
-the spooler outruns notification handling, or an application bypasses normal
-spooling.** Do not print while signed out or the watcher is stopped. On an overlap
-warning, reconcile source documents and output before reprinting. Unique Inbox
-PDFs remain the reliable fallback for applications that fail this qualification.
+The owner-restricted, unshared **Voucher Reorder** queue uses the built-in
+**Microsoft Print To PDF** driver and the native **Voucher Reorder Secure Port**
+monitor. The port name is `VoucherReorder:<desktop SID>`, including alternate-admin
+setup. The monitor writes only beneath
+`%ProgramData%\VoucherReorderSpool\<desktop SID>`, with administrator/SYSTEM
+ownership and no user directory-write rights. It holds no-reparse directory
+handles, checks final paths and ACLs, creates a UUID file with `CREATE_NEW`, flushes
+it, and publishes `.pdf` without replacement. Document titles and application
+output filenames never select the destination. Completed files grant the desktop
+user read/delete access; the privileged monitor never writes into the profile.
+
+The unprivileged broker copies each completed file into its durable queue before
+deleting the protected source. The UUID also identifies recovery after a crash or
+failed deletion, including across volumes. Independent filenames preserve online
+bursts and jobs produced while the watcher is stopped or signed out. Forwarding
+resumes when the user signs in and the watcher starts. Each input is limited to
+100 MiB; unclaimed spool files and crash `.partial` files have no aggregate size or
+age limit yet. Administrators must reconcile these before cleanup. Native driver,
+ACL, UAC and crash acceptance remains required; see TESTING_ON_WINDOWS.md.
+`/S /VIRTUAL=1` opts in after helper deployment; plain `/S` needs no administrator.
 
 Upgrade removes the old HKCU worker autostart and recognized owned scheduled
 tasks. Old virtual installations fall back to PDF mode without elevation; enabling
@@ -215,17 +226,20 @@ Never upload real checks or spool files to this public repository.
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements-dev.txt
-# Linux integration/build dependencies: ghostscript, nsis, p7zip-full
+# Linux build dependencies: ghostscript, nsis, p7zip-full, g++-mingw-w64-x86-64-posix
 .venv/bin/pytest -q
 .venv/bin/ruff check .
 .venv/bin/ruff format --check .
 python3 scripts/build_windows.py
 ```
 
-Outputs are in `dist/`: the installer, matching `-sources.zip`, and `SHA256SUMS.txt`.
+Outputs are in `dist/`: the per-user installer, separate `-PrinterDeploy.exe`,
+matching `-sources.zip`, and `SHA256SUMS.txt`.
 The script packages official x64 Windows binaries from SHA-256-pinned downloads in
 `packaging/dependencies.json`; it does not claim to cross-compile those upstream
-programs. `--stage-only` prepares files; `--version 0.2.6` overrides the packaging
+programs. Building the protected printer package requires the x64 MSVC compiler
+and Windows SDK on Windows, or `g++-mingw-w64-x86-64-posix` on Linux.
+`--stage-only` prepares files and builds that native package; `--version 0.2.6` overrides the packaging
 version for upgrade tests (no tag/release is created). Installations need no network
 in PDF mode. Virtual setup uses the already available Windows PDF driver; policy or missing-driver failures fall back to PDF mode.
 

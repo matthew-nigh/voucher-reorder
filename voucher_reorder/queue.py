@@ -96,6 +96,7 @@ class Queue:
         with self.lock, self.transaction():
             for job in self.jobs():
                 if self.read(job)["state"] == "sent":
+                    self.reconcile(job, self.read(job))
                     shutil.rmtree(job.parent)
 
     def dismiss(self, identifier):
@@ -104,19 +105,24 @@ class Queue:
             job = next((j for j in self.jobs() if j.parent.name == identifier), None)
             if job is None or self.read(job)["state"] not in {"failed", "review"}:
                 raise ValueError("Select a failed or review job to dismiss.")
+            self.reconcile(job, self.read(job))
             failure = self.root.parent / "Needs attention" / identifier
             if failure.exists():
                 shutil.rmtree(failure)
             shutil.rmtree(job.parent)
 
-    def accept_file(self, source, settings, document=None):
-        """Claim a completed arrival by rename while denying other readers/writers.
+    def accept_file(self, source, settings, document=None, *, protected_spool=False):
+        """Claim an arrival by rename, or durable copy/ack from the protected spool.
 
         Parsing happens later in the bounded processor, never in the broker.
         Repeated identical arrivals are distinct jobs; legacy byte submissions retain deduplication.
         """
         from .inbox import exclusive_read
 
+        if protected_spool and not re.fullmatch(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.pdf", source.name
+        ):
+            raise ValueError("Invalid protected spool filename")
         attributes = source.lstat()
         if not stat.S_ISREG(attributes.st_mode) or (
             getattr(attributes, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
@@ -127,6 +133,19 @@ class Queue:
             FileLock(self.root.parent / "queue.lock"),
             exclusive_read(source, movable=True) as stream,
         ):
+            if protected_spool:
+                folder = self.root / f"spool-{source.stem}"
+                existing = folder / "state.json"
+                if existing.exists():
+                    state = self.read(existing)
+                    if state["state"] != "receiving" or (folder / "input.pdf").exists():
+                        if state["state"] == "receiving":
+                            self.update(existing, "queued", "Recovered completed pickup")
+                        self.reconcile(existing, self.read(existing))
+                        return existing
+                    shutil.rmtree(folder)  # incomplete copy; source is still intact
+                elif folder.exists():
+                    shutil.rmtree(folder)  # crash between mkdir and metadata commit
             stream.seek(0, 2)
             size = stream.tell()
             if not 0 < size <= MAX_JOB:
@@ -142,9 +161,10 @@ class Queue:
             if total + size > 512 * 1024**2 or shutil.disk_usage(self.root).free < 256 * 1024**2:
                 raise ValueError("Insufficient queue space.")
             title = re.sub(r"[^a-zA-Z0-9 _-]", "_", document or source.stem)[:60].strip() or "job"
-            folder = self.root / f"{time.time_ns()}-{uuid.uuid4().hex}-{title}"
+            if not protected_spool:
+                folder = self.root / f"{time.time_ns()}-{uuid.uuid4().hex}-{title}"
             folder.mkdir(mode=0o700)
-            # Write recoverable admission metadata BEFORE the atomic rename.
+            # Commit recovery metadata before moving/copying any payload.
             state = {
                 "state": "receiving",
                 "created": time.time(),
@@ -154,14 +174,28 @@ class Queue:
                 "message": "Claiming PDF",
                 "document": title,
             }
+            if protected_spool:
+                state["pending_spool"] = str(source)
             atomic_json(folder / "state.json", state)
             try:
-                source.rename(folder / "input.pdf")
+                if protected_spool:
+                    # Different volumes/redirected profiles are supported. Commit a
+                    # durable copy before acknowledging the protected source. The
+                    # UUID is also the recovery key if deletion or the process fails.
+                    stream.seek(0)
+                    with (folder / "input.partial").open("xb") as target:
+                        shutil.copyfileobj(stream, target)
+                        target.flush()
+                        os.fsync(target.fileno())
+                    (folder / "input.partial").rename(folder / "input.pdf")
+                else:
+                    source.rename(folder / "input.pdf")
             except BaseException:
                 shutil.rmtree(folder)
                 raise
             state.update(state="queued", message="Waiting to print")
             atomic_json(folder / "state.json", state)
+            self.reconcile(folder / "state.json", state)
             return folder / "state.json"
 
     def clean_payload(self, job):
@@ -178,6 +212,10 @@ class Queue:
         return True
 
     def reconcile(self, job, state):
+        if state.get("pending_spool") and state["state"] != "receiving":
+            Path(state["pending_spool"]).unlink(missing_ok=True)
+            del state["pending_spool"]
+            atomic_json(job, state)
         source = state.get("pending_receipt")
         if source:
             from .inbox import persist_receipt

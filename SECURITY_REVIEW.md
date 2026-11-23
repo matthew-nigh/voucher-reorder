@@ -10,18 +10,42 @@ at least daily while it is running, and at processor recovery. Saved PDF output,
 stopped installations, crash leftovers, backups and spooler copies remain outside
 this retention guarantee. A daily scan does not impose a total byte budget.
 
-CR-04 is only partially fixed: port removal no longer restarts the machine-wide
-Spooler and reports a stuck port for later administrator maintenance. Microsoft
-Print To PDF's Local Port still writes to one fixed path. The watcher cannot
-guarantee unique filenames for concurrent or offline jobs. CR-01 and CR-02 remain
-open: no trusted administrator-protected helper or reparse-safe spool handoff has
-been deployed. CR-05 remains open: the bounded process still runs with the user's
-normal-integrity token; Ghostscript already uses `-dSAFER`. A Low-integrity
-renderer with a separate spool handoff requires native Windows validation before
-the optional virtual-printer path can be called fixed. CR-10's version identity is
-updated to v0.2.6, while the native toolchain and distribution-provenance risks
-described below remain. This status supersedes individual historical “Status”
-sentences below.
+CR-01, CR-02 and the CR-04 filename remainder are **fixed in source** by the
+protected native printer package in this follow-up; Windows acceptance remains
+pending. `PrinterDeploy.exe` must be independently verified by an administrator
+in admin-protected staging. It deploys embedded helper/monitor bytes with protected
+ACLs and verifies them. The per-user launcher elevates the installed
+`PrinterSetup.exe` directly, with only install/remove and a canonical account SID;
+it no longer elevates PowerShell or reads a per-user script into privileged code.
+The helper also refuses execution outside its protected installed location.
+
+The native monitor writes UUID-named jobs under an administrator/SYSTEM-owned
+ProgramData spool, never into a user-controlled folder. It rejects reparse points,
+untrusted owners/ACLs and mismatched final paths and holds ancestor handles without
+delete sharing. Files use exclusive `CREATE_NEW`, are flushed, and are published
+without replacement; user read/delete rights apply only to completed files. The
+unprivileged handoff copies into the durable queue and records the UUID before
+acknowledging the source, including across volumes and after restart. The old
+pause/resume fixed-file guard is removed. Existing fixed-port installations fall
+back to PDF mode until explicitly migrated. Removal still never restarts Spooler.
+
+**Residual risk:** the new privileged native code and Microsoft PDF driver/monitor
+integration require Windows 10/11 UAC, ACL, reparse, offline burst and crash
+qualification. Native acceptance harnesses are supplied but were not run on this
+Linux host. Cross-compilation and portable tests do not establish those results.
+Distribution remains unsigned (CR-09/CR-10); initial administrator verification of
+the staged deployment package is the trust bootstrap, not a user-side hash check.
+Existing changed helper bytes are refused; upgrades to loaded monitor code need
+administrator maintenance. Old detached Local Port entries, unclaimed protected
+PDFs and crash `.partial` files need administrator reconciliation/cleanup. There
+is a 100 MiB per-job limit but no aggregate protected-spool budget or age limit.
+Physical printing and spooler crash/retry are not an exactly-once guarantee.
+
+CR-05 remains **open and explicitly deferred**: no Low-integrity sandbox was
+implemented. Parsers/renderers retain the user's normal-integrity token;
+Ghostscript already uses `-dSAFER`. Other findings are unchanged. CR-10's version
+identity remains v0.2.6; native toolchain and distribution-provenance risks remain.
+This status supersedes historical “Status” sentences below.
 
 This review covers `codex/windows-test-fixes-2` / PR #6 at **1180ad8**, plus the
 small hardening changes in the commit containing this report. Matthew's successful
@@ -30,13 +54,11 @@ The requested build is identified as v0.2.6; **the checked-out project metadata 
 workflow artifact names still say 0.2.4**. Findings are tied to the source revision,
 not an assumed binary/tag match (CR-10). No GitHub CI was queried during this review.
 
-**Release assessment:** no Critical finding was established. Two High findings
-remain open in the optional virtual-printer path; one is source-confirmed execution
-of mutable code after UAC approval, and the other requires native confirmation of
-privileged file redirection. Do not treat the former review's “protected provisioning
-package” mitigation as current. PDF Inbox mode avoids these two elevation/port
-boundaries, but retains the file, parser, privacy and distribution risks below.
-Windows security acceptance is still needed before broader virtual-printer rollout.
+**Release assessment:** the two High source-level boundaries are redesigned and
+fixed in this follow-up, subject to the native qualification and trust-bootstrap
+residuals above. PDF Inbox mode avoids privileged printer setup and the new port
+monitor. Windows security acceptance is still required before broader virtual
+printer rollout; no native exploit or native acceptance result is claimed here.
 
 The entire earlier review is preserved verbatim under **Historical review record**.
 Its line numbers, architecture, test counts and remediation statuses describe prior
@@ -68,10 +90,10 @@ complete advisory audit of all bundled C/C++ libraries.
 
 | ID | Severity | Status in this commit | Finding |
 | --- | --- | --- | --- |
-| CR-01 | High | **Open** | Optional setup elevates user-writable script content; historical SR-03 is reopened. |
-| CR-02 | High, conditional | **Open; native proof pending** | Privileged fixed-port target is inside a user-controlled directory without reparse-safe binding. |
+| CR-01 | High | **Fixed in source; native acceptance and distribution trust remain** | Protected native helper replaces elevated user-writable PowerShell. |
+| CR-02 | High, conditional | **Fixed in source; native acceptance pending** | Protected spool, ACL/final-handle checks, held ancestors and unprivileged handoff replace user-controlled port paths. |
 | CR-03 | Medium | **Fixed for age-based retention and Dismiss; residual storage limits remain** | Failed/review payloads and status expire after seven days; Dismiss deletes both. |
-| CR-04 | Medium | **Partially fixed; overwrite risk open** | Removal no longer restarts the machine spooler; the fixed Local Port still permits overlap/offline overwrite. |
+| CR-04 | Medium | **Fixed in source; native offline/crash qualification pending** | Unique per-job files replace the shared Local Port filename; removal never restarts Spooler. |
 | CR-05 | Medium | **Open; partially mitigated** | Parser processes have resource limits, but retain the user's filesystem/network authority. |
 | CR-06 | Low | **Open** | Filesystem privacy and containment depend on inherited ACLs and stable parent directories. |
 | CR-07 | Low | **Fixed** | Output publication could replace an existing destination despite its no-overwrite contract. |
@@ -100,7 +122,13 @@ small validated inputs; or have an administrator provision from independently
 verified trusted media. Bind approval to the code actually executed. A hash check
 inside another user-writable script is insufficient. Until resolved, favor PDF
 Inbox mode on machines where standard users must not influence elevated code.
-**Status: open; redesign is outside this small hardening commit.**
+**Follow-up status: fixed in source.** See `packaging/native/deploy.cpp`,
+`setup.cpp`, `secure.hpp`, and `packaging/request_printer.ps1`. Initial deployment
+uses independently verified admin-protected media, not an automatically elevated
+per-user package. Deployed bytes are compared with embedded resources, all code
+paths are protected and checked, and UAC approves the helper image itself. No
+script or arbitrary executable/path input is accepted. Unsigned provenance and
+native UAC qualification remain residual risks, not claimed fixed here.
 
 ### CR-02 — High, conditional: privileged fixed-port output follows mutable paths
 
@@ -123,7 +151,16 @@ files, both same-user and alternate-admin setup, before and after provisioning.
 Trace the effective writer token and final handle target. Use an administrator-owned
 spool destination with authenticated handoff or an equivalent handle-based design
 that cannot be retargeted by the desktop user. Do not rely on a one-time `resolve`
-or `Test-Path` check. **Status: open, high-priority native validation/design work.**
+or `Test-Path` check.
+**Follow-up status: fixed in source.** `packaging/native/monitor.cpp` and
+`secure.hpp` bind writes to protected ProgramData directories, verify every
+component without following reparses, check final handle names/ACLs/owners, and
+hold ancestors against replacement. User ACLs cannot create entries or retarget
+those directories; completed files permit read/delete only. Handoff occurs at
+user privilege in `Queue.accept_file(protected_spool=True)`. Native tests cover
+junction leaf/ancestor rejection, sentinel preservation, hostile writable ACLs,
+held-handle replacement and restricted-token write denial; they are pending Windows
+execution. Portable handoff tests cover cross-volume copying and recovery.
 
 ### CR-03 — Medium: 24 hours is not a universal retention limit
 
@@ -169,7 +206,16 @@ are queued; a new job can arrive between the check and restart.
 Until then enforce the documented one-job-at-a-time operational limit with an
 active signed-in watcher and reconcile source batches against output. Make any
 spooler restart a separately explained maintenance action; preserve unrelated
-queues/ports. **Status: open; no printer behavior changed here.**
+queues/ports.
+**Follow-up status: fixed in source.** The custom port creates a new UUID file with
+`CREATE_NEW` for each StartDoc, ignores application output names, and publishes
+completed PDFs without replacement. Concurrent/offline jobs have independent files;
+there is no watcher pause timing requirement. UUID-keyed copy/ack recovery prevents
+pickup retries from becoming duplicate admissions. Tests cover offline bursts,
+copy/commit interruptions, failed acknowledgement and retention. Native offline
+printing is added to `scripts/test_clone_printer.ps1` but has not run on this host.
+Spooler/power failures, partial spool storage and physical-print reconciliation
+remain residual risks. Removal does not restart the machine Spooler.
 
 ### CR-05 — Medium: bounded execution is not an OS security sandbox
 

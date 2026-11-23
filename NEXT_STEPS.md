@@ -1,10 +1,9 @@
 # Next steps for Matthew
 
-> Historical notes below describe earlier releases. v0.2.3 replaces retained RAW
-> spooling and the elevated provisioning package with a built-in PDF fixed-port
-> clone and native event broker. Inbox arrivals now move to unique jobs; failed
-> inputs remain in Needs attention for explicit retry. See README.md and
-> TESTING_ON_WINDOWS.md for current behavior and fixed-port concurrency limits.
+> Historical notes below describe earlier releases. Current virtual printing uses
+> an administrator-deployed native helper and a protected, unique-file spool port.
+> See README.md and TESTING_ON_WINDOWS.md for deployment and acceptance work.
+
 
 
 ## Done in this round

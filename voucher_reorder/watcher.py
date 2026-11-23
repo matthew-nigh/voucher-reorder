@@ -59,11 +59,9 @@ def serve():
 def _serve(root, changes_factory=Changes, launch=launch_processor):
     from .inbox import Inbox
     from .queue import Queue
-    from .spool import Guard
+    from .spool import Guard, incoming_folder
 
     inbox = Inbox(root)
-    incoming = root / "Incoming"
-    incoming.mkdir(exist_ok=True)
     queue = Queue(root / "jobs")
     child = None
     guard = Guard(root)
@@ -97,12 +95,12 @@ def _serve(root, changes_factory=Changes, launch=launch_processor):
                         child = None
                         changes.child = None
                     if settings.output_ready:
-                        if virtual and (incoming / "job.pdf").exists():
-                            try:
-                                queue.accept_file(incoming / "job.pdf", settings, guard.document)
-                                guard.picked_up()
-                            except (OSError, ValueError):
-                                warning = "Incoming PDF is open, incomplete or unavailable. Finish printing; use Retry pickup in Job status if needed."
+                        if virtual:
+                            for source in sorted(incoming_folder().glob("*.pdf")):
+                                try:
+                                    queue.accept_file(source, settings, protected_spool=True)
+                                except (OSError, ValueError):
+                                    warning = "Incoming PDF is unavailable. Use Retry pickup in Job status if needed."
                         if settings.watch_inbox:
                             warning = inbox.scan(queue, settings) or warning
                         pending = pending_files(root, settings)

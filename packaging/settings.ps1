@@ -76,7 +76,7 @@ function Start-ModeSetup($action) {
         $modeLabel.Text = if ($action -eq 'virtual') { 'Setting up the Voucher Reorder printer...' } else { 'Switching to PDF handoff...' }
         $enableVirtual.Enabled = $false; $switchPdf.Enabled = $false
         $setupProgress.Visible = $true
-        # No -Wait: Windows PowerShell requests the one optional elevation.
+        # No -Wait: the launcher requests elevation of the protected native helper.
         if ($SmokeTest) {
             $script:setupProcess = Start-Process -FilePath $python -ArgumentList @('-c', '"import time; time.sleep(1)"') -WindowStyle Hidden -PassThru
             return

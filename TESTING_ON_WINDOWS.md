@@ -7,19 +7,21 @@ installer SHA256 and BUILD_INFO.json revision. Never publish real checks or name
 
 ## Automated coverage
 
-The workflow runs pytest and ruff, builds Setup.exe/source/SHA256SUMS, and checks:
+The workflow runs pytest and ruff, builds Setup.exe/PrinterDeploy.exe/source/SHA256SUMS, and checks:
 
 - Native `ReadDirectoryChangesW` notifications, locked/renamed Inbox arrivals,
   bursts, `watch_inbox` toggles, restart, persisted status, and no idle child spawns.
 - A real standard-user install, upgrade from v0.2.0, old-worker shutdown and Run
   entry migration, settings/held-job preservation, repair, downgrade refusal and removal.
-- Real legacy queue migration to **Microsoft Print To PDF**, fixed local port
-  `%LOCALAPPDATA%\VoucherReorder\Incoming\job.pdf`, owner restriction and removal.
+- Native ACL/reparse/final-path rejection and restricted-token write denial.
+- Real legacy queue migration to **Microsoft Print To PDF**, the protected
+  `VoucherReorder:<SID>` port, owner restriction and removal.
 - `scripts/test_clone_printer.ps1` prints a text file with the ordinary WinForms
   `PrintDocument` path to **Voucher Reorder**. It supplies neither an output file
   nor `PrintToFile`, and has no UI to answer a Save As dialog. It requires one
-  one-page and two back-to-back ten-page jobs to reach unique durable jobs, verifies
-  output page counts and deletion after success, and fails on overlap warnings.
+  one-page and two offline back-to-back ten-page jobs to reach unique durable jobs,
+  verifies two independent protected PDFs before restart, then page counts and
+  deletion after success.
   The CI step has a timeout so a hidden Save As dialog fails rather than hangs.
 - Six consecutive ten-page output jobs, vector content/page IDs, bounded memory,
   PDF reprint, image/layer/blank rejection, specific errors and scratch cleanup.
@@ -65,28 +67,61 @@ kernel waits. The active document supervisor still enforces resource deadlines.
 
 ## Admin clone and Save As qualification
 
-1. Enable virtual printer in Setup or Settings. Expect **one UAC elevation of
-   Windows PowerShell**, no separate unsigned provisioning executable. Repeat with
-   an alternate administrator's credentials: the port must still use the desktop
-   user's LocalAppData. The Windows default printer must remain unchanged.
-2. Inspect `Get-Printer -Name 'Voucher Reorder'` and `Get-PrinterPort`: built-in
-   `Microsoft Print To PDF`, local absolute `Incoming\job.pdf` port, unshared and
-   restricted to the owner/admins. Another standard user must not submit to it.
-3. Print a short document from **Notepad**, **Edge**, and **QuickBooks Desktop**.
-   Select Voucher Reorder in each normal print UI. There must be **no Save As
-   dialog**. Verify queue pickup and correct page count/output. Record app versions.
-4. Send two ten-page jobs back to back. Verify distinct queue IDs and document
-   names where metadata survives, all 20 pages and no overwritten/missing job.
-   During pickup later jobs should be paused, then resumed. Repeat under load.
-5. Stop the watcher and demonstrate the fixed-port limitation using synthetic
-   data only: Windows does not provide an atomic per-job filename for a fixed port.
-   Do not claim lossless offline printing. Overlap warnings or inability to hold
-   must be visible in Job status. Use Inbox with unique filenames for unqualified
-   producers. Fast spoolers can outrun event handling; no general lossless guarantee
-   is claimed even if CI's back-to-back test passes.
-6. Decline UAC; simulate policy/missing driver; verify explicit blocked/declined
-   fallback and usable PDF mode. Remove through Settings: one built-in elevation,
-   clone and dedicated unused port removed, shared driver and NUL: untouched.
+1. **Deploy from trusted administrator staging first.** Obtain
+   `VoucherReorder-0.2.6-PrinterDeploy.exe` and its checksum/provenance through an
+   independently trusted release channel. In an administrator session create a
+   fresh directory under Program Files with owner Administrators and a protected
+   DACL granting only Administrators/SYSTEM write access. Copy the package there,
+   set its owner to Administrators, and verify its SHA256 *there* against the
+   independently obtained digest before running it. Do not elevate a package from
+   Downloads, the per-user app, or a user-writable staging folder. A checksum next
+   to an untrusted download is not authentication. The package refuses writable,
+   reparse, or untrusted-owner staging; no user-side script verifies privileged code.
+   It installs embedded helper bytes into `%ProgramFiles%\VoucherReorderPrinter`
+   and the monitor into `%SystemRoot%\System32\VoucherReorderPort.dll` as required
+   by AddMonitor, with admin/SYSTEM write and Users read/execute ACLs, and verifies
+   the deployed bytes. Re-running the same package
+   is allowed; a different installed binary fails closed. Updating loaded monitor
+   code requires separate administrator maintenance after reconciling queues,
+   removing the monitor, and removing the protected old files. No automatic
+   spooler restart or privileged self-update is implemented.
+2. Enable virtual printer in Setup or Settings. Expect one UAC elevation of the
+   installed **PrinterSetup.exe**, not PowerShell. Repeat with alternate-admin
+   credentials: the port must use the original desktop SID. Tamper with the
+   per-user `request_printer.ps1`/old `printer.ps1` fixture and verify the installed
+   helper never reads it. Standard users must be unable to modify the helper,
+   monitor, protected spool directories or another user's completed PDFs.
+3. Inspect `Get-Printer` and `Get-PrinterPort`: built-in Microsoft Print To PDF,
+   `VoucherReorder:<SID>`, monitor **Voucher Reorder Secure Port**, unshared and
+   owner-restricted. The default printer and unrelated queues must not change.
+   Missing Microsoft Print To PDF must leave usable PDF mode; the administrator
+   enables the Windows feature separately.
+4. Print from Notepad, Edge and QuickBooks without Save As. Send two ten-page jobs
+   back to back, including with the watcher stopped and while signed out. Verify
+   distinct UUID PDFs in `%ProgramData%\VoucherReorderSpool\<SID>` and all 20 pages
+   after restarting pickup. No pause/resume race is part of job isolation now.
+5. In a disposable VM, preplant junctions at the spool root, SID directory, and
+   helper directory; each operation must fail without touching an external benign
+   sentinel. Repeat a directory-replacement attempt during StartDoc/Write/EndDoc:
+   held handles must prevent replacement. Try planting hard links and alternate
+   names as the standard user: directory creation/write must be denied. Trace
+   effective tokens and final file handles; no SYSTEM write may enter LocalAppData.
+   Run `scripts/test_virtual_setup.ps1` for the native automated checks.
+6. Kill pickup before/after the copy and acknowledgement; retry must admit each
+   UUID once. Test redirected profiles on another volume. Crash the spooler during
+   a write: partial files must never be published or printed, and other completed
+   jobs must remain intact. Reconcile partial jobs manually; this is not an exactly
+   once physical-print guarantee. Unclaimed/partial protected files have no age or
+   aggregate storage budget and need administrator review.
+7. Decline UAC and test missing helper/policy/driver failures: PDF mode remains
+   usable. Remove through Settings: the queue/secure monitor is removed without
+   restarting Spooler; an in-use monitor reports failure for admin maintenance.
+   Old detached Local Port registry entries and protected files are intentionally
+   left for administrator cleanup. No unrelated/shared system port is deleted.
+
+These new native checks are wired into the Windows workflow but have not been
+executed in the Linux implementation environment. Do not infer UAC/ACL/driver
+qualification from portable tests or cross-compilation alone.
 
 ## Failure, retry and upgrade
 
@@ -107,7 +142,7 @@ kernel waits. The active document supervisor still enforces resource deadlines.
   outstanding jobs; create the clone. Reject a foreign queue with the same name.
 - Uninstall preserves settings and outstanding data. Refused optional printer
   removal must be explicit. Old provisioning installation files are not executed
-  by v0.2.6 and are not part of the new download.
+  by this version. The new native PrinterDeploy package is distributed separately.
 
 ## Physical acceptance
 

@@ -1,21 +1,24 @@
-"""Event-triggered spool metadata and best-effort serialization of fixed-port jobs.
-
-No RAW payload access, RPC spool-file reads, subprocesses, or periodic probes.
-"""
+"""Validate the protected virtual queue; per-job isolation lives in the port monitor."""
 
 import ctypes as c
-import json
 from ctypes import wintypes as w
+from pathlib import Path
 
-from .config import atomic_json
+
+def incoming_folder():
+    from .spool_metadata import _checked, _owner_sid
+
+    # Resolve the Windows known folder, not a user-controlled environment variable.
+    shell = c.WinDLL("shell32", use_last_error=True)
+    shell.SHGetFolderPathW.argtypes = [w.HWND, c.c_int, w.HANDLE, w.DWORD, w.LPWSTR]
+    path = c.create_unicode_buffer(32768)
+    _checked(shell.SHGetFolderPathW(None, 0x23, None, 0, path) == 0)
+    return Path(path.value) / "VoucherReorderSpool" / _owner_sid()
 
 
 class Guard:
     def __init__(self, root):
         self.root = root
-        self.path = root / "printer-pickup.json"
-        self.state = json.loads(self.path.read_text()) if self.path.exists() else {"active": None, "held": []}
-        self.document = self.state.get("document")
 
     def snapshot(self):
         from .spool_metadata import JobInfo, PrinterInfo, _checked, _owner_sid
@@ -53,7 +56,8 @@ class Guard:
             if (
                 printer.comment != f"VoucherReorder owner={_owner_sid()}"
                 or printer.driver != "Microsoft Print To PDF"
-                or printer.port.casefold() != str(self.root / "Incoming" / "job.pdf").casefold()
+                or printer.attributes & (0x8 | 0x100)  # shared / keep printed jobs
+                or printer.port != f"VoucherReorder:{_owner_sid()}"
             ):
                 raise ValueError("Reconfigure the old or foreign virtual printer in Settings")
             count = w.DWORD()
@@ -79,60 +83,8 @@ class Guard:
         finally:
             api.ClosePrinter(handle)
 
-    def control(self, job, command):
-        from .spool_metadata import _checked
-
-        api = c.WinDLL("winspool.drv", use_last_error=True)
-        api.OpenPrinterW.argtypes = [w.LPWSTR, c.POINTER(w.HANDLE), w.LPVOID]
-        api.ClosePrinter.argtypes = [w.HANDLE]
-        api.SetJobW.argtypes = [w.HANDLE, w.DWORD, w.DWORD, w.LPVOID, w.DWORD]
-        handle = w.HANDLE()
-        _checked(api.OpenPrinterW("Voucher Reorder", c.byref(handle), None))
-        try:
-            _checked(api.SetJobW(handle, job["id"], 0, None, command))
-        finally:
-            api.ClosePrinter(handle)
-
     def changed(self):
-        jobs = self.snapshot()
-        active = self.state["active"]
-        held = set(self.state["held"])
-        held.intersection_update(j["key"] for j in jobs)
-        if active is None and jobs:
-            active = jobs[0]["key"]
-            self.document = f"{jobs[0]['document']}-{jobs[0]['id']}"
-        warning = None
-        for job in jobs:
-            if job["key"] == active or job["key"] in held:
-                continue
-            if job["status"] & 0x10:
-                warning = "Overlapping fixed-port jobs detected. A PDF may have been overwritten; compare Job status with the source documents before reprinting."
-            try:
-                if not job["status"] & 1:
-                    self.control(job, 1)  # JOB_CONTROL_PAUSE, only this user's jobs
-                    held.add(job["key"])
-            except OSError:
-                warning = "Could not hold a second fixed-port job. Stop sending jobs and compare source documents with Job status; a PDF may have been overwritten."
-        self.state.update(active=active, held=sorted(held), document=self.document)
-        atomic_json(self.path, self.state)
-        if warning:
-            atomic_json(self.root / "printer-warning.json", {"error": warning})
-        return warning
-
-    def picked_up(self):
-        self.state.update(active=None, document=None)
-        self.document = None
-        # Resume only one job we ourselves held, after the fixed path is free.
-        for job in self.snapshot():
-            if job["key"] in self.state["held"]:
-                self.state.update(active=job["key"], document=f"{job['document']}-{job['id']}")
-                self.document = self.state["document"]
-                atomic_json(self.path, self.state)
-                self.control(job, 2)
-                self.state["held"].remove(job["key"])
-                break
-        atomic_json(self.path, self.state)
+        self.snapshot()
 
     def close(self):
-        # Held jobs stay held on shutdown: resuming without a watcher could overwrite job.pdf.
         pass

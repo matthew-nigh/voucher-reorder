@@ -34,7 +34,7 @@ def main(action, ui=False):
         )
         if not remove and result.returncode == 0:
             installed_marker.touch()
-            (root / "fixed-port-installed").touch()
+            (root / "secure-port-installed").touch()
             save(config, replace(settings, mode="virtual"))
             detail = "Virtual printer mode is ready. Print to Voucher Reorder while signed in."
         else:
@@ -44,14 +44,17 @@ def main(action, ui=False):
                 "No administrator access is needed for this mode."
             )
             if not remove and result.returncode:
-                detail += " Virtual printer setup was blocked, declined or failed; rerun setup and select the virtual printer option."
+                detail += (
+                    " Virtual printer setup was blocked, declined or failed. An administrator must first "
+                    "verify and run the separate PrinterDeploy package, then enable the printer in Settings."
+                )
             if remove and result.returncode:
                 detail += (
                     " The optional Windows printer was not removed; an administrator can remove it later."
                 )
         if remove and result.returncode == 0:
             installed_marker.unlink(missing_ok=True)
-            (root / "fixed-port-installed").unlink(missing_ok=True)
+            (root / "secure-port-installed").unlink(missing_ok=True)
         initialized.touch()
         if action not in ("remove", "setup"):
             register_user()

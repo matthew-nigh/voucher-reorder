@@ -5,11 +5,13 @@
 1. **Install or upgrade.** Run `VoucherReorder-0.2.6-Setup.exe` normally. If SmartScreen
    appears, confirm the download came from this project, then choose **More info →
    Run anyway**. PDF mode needs no administrator access. For virtual mode, select
-   **Virtual printer (one administrator prompt)** in setup. Setup includes the matching
-   provisioning package; approve one UAC prompt or decline and use PDF mode. You can
-   also enable it later in Settings. Run newer installers without uninstalling first.
-   If the machine package is older, the app upgrades in PDF mode and explains how to
-   update the optional component. Your printer/layout settings stay saved.
+   **Virtual printer** after an administrator verifies and runs the separate
+   `VoucherReorder-0.2.6-PrinterDeploy.exe` from protected staging (see
+   TESTING_ON_WINDOWS.md). Enabling the printer then asks to elevate the installed
+   **PrinterSetup.exe**. Decline and use PDF mode if that helper is unavailable.
+   You can also enable it later in Settings. Run newer app installers without
+   uninstalling first. Existing fixed-port printers require migration; printer
+   and layout settings stay saved.
 2. **Choose the output and both orders.** Open Voucher Reorder from Start. Choose
    your printer, matching paper size and tray. Without a physical printer, choose
    **Save reordered PDF** and **Browse** to a folder outside the Inbox. The folder
@@ -68,9 +70,12 @@ app and Windows. Inbox arrivals move to unique jobs and are deleted after succes
 printer needs UAC; PDF mode does not. During setup, “Setting up the Voucher Reorder
 printer...” and a moving progress bar appear. The mode buttons are disabled while
 it runs, and a success/failure message appears when finished. One UAC prompt is
-expected; declining it leaves PDF handoff available. **Uninstall:** use Windows Settings → Apps.
+expected after administrator deployment; declining it leaves PDF handoff available. **Uninstall:** use Windows Settings → Apps.
 Declining UAC can leave the optional printer installed but removes the per-user app.
-Your settings, Inbox and held jobs remain for reinstall. After checking queues and
+The protected helper stays installed for administrator maintenance. Pending virtual
+jobs also remain under `%ProgramData%\VoucherReorderSpool\<your SID>`; have an
+administrator reconcile these before deleting them. Your settings, Inbox and held
+jobs remain for reinstall. After checking queues and
 paper, you may delete `%LOCALAPPDATA%\VoucherReorder` to remove those saved files.
 
 For help, share only Windows/QuickBooks versions, printer model, stock order and

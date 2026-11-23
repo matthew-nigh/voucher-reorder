@@ -88,6 +88,7 @@ def test_internal_writes_do_not_wake(name):
 
 def test_idle_virtual_watcher_blocks_without_repeated_probes_or_spawns(tmp_path, monkeypatch):
     settings(tmp_path, mode="virtual")
+    monkeypatch.setattr(spool, "incoming_folder", lambda: tmp_path / "protected")
     changes = FakeChanges(tmp_path)
     probes = []
     monkeypatch.setattr(spool.Guard, "changed", lambda self: probes.append(True))
@@ -152,20 +153,12 @@ def test_processor_drains_burst_and_exits_after_idle(tmp_path, monkeypatch):
     assert json.loads((tmp_path / "worker.json").read_text())["state"] == "idle"
 
 
-def test_spool_guard_holds_later_job_until_pickup_and_reports_overlap(tmp_path, monkeypatch):
+def test_secure_spool_guard_only_validates_metadata(tmp_path, monkeypatch):
     guard = spool.Guard(tmp_path)
     jobs = [{"id": n, "key": str(n), "document": f"doc{n}", "status": 0x10} for n in (1, 2)]
     monkeypatch.setattr(guard, "snapshot", lambda: jobs)
-    calls = []
-    monkeypatch.setattr(guard, "control", lambda j, op: calls.append((j["id"], op)))
-    assert "Overlapping" in guard.changed()
-    assert calls == [(2, 1)]
-    guard.changed()
-    assert calls == [(2, 1)]
-    guard.picked_up()
-    assert calls == [(2, 1), (2, 2)]
-    assert guard.state["active"] == "2"
-    assert "overwritten" in json.loads((tmp_path / "printer-warning.json").read_text())["error"]
+    assert guard.changed() is None
+    assert not (tmp_path / "printer-pickup.json").exists()
 
 
 def test_status_does_not_start_process_and_reads_persisted_jobs(tmp_path, monkeypatch, capsys):
