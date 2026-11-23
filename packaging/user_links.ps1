@@ -32,6 +32,7 @@ $link.Arguments = '"' + (Join-Path $Candidate 'app.py') + '" settings'
 $link.WorkingDirectory = $Candidate
 $link.IconLocation = (Join-Path $Candidate 'packaging\printer.ico') + ',0'
 $link.Save()
+$null = [Runtime.InteropServices.Marshal]::FinalReleaseComObject($link)
 [SettingsIdentity]::SetShortcutAppId($shortcutPath)
 $guide = $shell.CreateShortcut((Join-Path $folder 'User Guide.lnk'))
 $guide.TargetPath = Join-Path $Candidate 'USER_GUIDE.txt'

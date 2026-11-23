@@ -6,7 +6,6 @@ public static class SettingsIdentity
 {
     public const string AppId = "VoucherReorder.Settings";
     private static readonly Guid PropertyStoreId = new Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99");
-    private static readonly Guid ShellLinkId = new Guid("00021401-0000-0000-C000-000000000046");
 
     [StructLayout(LayoutKind.Sequential)]
     private struct PropertyKey
@@ -15,7 +14,7 @@ public static class SettingsIdentity
         public uint PropertyId;
     }
 
-    [StructLayout(LayoutKind.Explicit, Size = 16)]
+    [StructLayout(LayoutKind.Explicit, Size = 24)]
     private struct PropVariant
     {
         [FieldOffset(0)] public ushort Type;
@@ -32,20 +31,13 @@ public static class SettingsIdentity
         void Commit();
     }
 
-    [ComImport, Guid("0000010b-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface IPersistFile
-    {
-        void GetClassID(out Guid classId);
-        [PreserveSig] int IsDirty();
-        void Load([MarshalAs(UnmanagedType.LPWStr)] string fileName, uint mode);
-        void Save([MarshalAs(UnmanagedType.LPWStr)] string fileName, bool remember);
-        void SaveCompleted([MarshalAs(UnmanagedType.LPWStr)] string fileName);
-        void GetCurFile(out IntPtr fileName);
-    }
-
     [DllImport("shell32.dll", PreserveSig = false)]
     private static extern void SHGetPropertyStoreForWindow(IntPtr window, ref Guid interfaceId,
         [MarshalAs(UnmanagedType.Interface)] out IPropertyStore store);
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+    private static extern void SHGetPropertyStoreFromParsingName(string path, IntPtr bindContext,
+        uint flags, ref Guid interfaceId, [MarshalAs(UnmanagedType.Interface)] out IPropertyStore store);
 
     [DllImport("ole32.dll")]
     private static extern int PropVariantClear(ref PropVariant value);
@@ -76,14 +68,11 @@ public static class SettingsIdentity
 
     public static void SetShortcutAppId(string path)
     {
-        var link = Activator.CreateInstance(Type.GetTypeFromCLSID(ShellLinkId));
-        try {
-            var file = (IPersistFile)link;
-            file.Load(path, 0);
-            SetAppId((IPropertyStore)link);
-            file.Save(path, true);
-        } finally {
-            Marshal.ReleaseComObject(link);
-        }
+        IPropertyStore store;
+        var interfaceId = PropertyStoreId;
+        // GPS_READWRITE asks the shell's .lnk property handler for a writable store.
+        SHGetPropertyStoreFromParsingName(path, IntPtr.Zero, 2, ref interfaceId, out store);
+        try { SetAppId(store); }
+        finally { Marshal.ReleaseComObject(store); }
     }
 }
