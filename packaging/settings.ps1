@@ -342,6 +342,8 @@ $null = Button 'Job status' 15 645 150 {
     $dismiss.Add_Click({
         if ($null -eq $list.SelectedItem) { return }
         $selected=$list.SelectedItem
+        $answer=[Windows.Forms.MessageBox]::Show('Delete this failed job, its PDF or PostScript input, and its status? This cannot be undone.','Dismiss job','YesNo','Warning')
+        if ($answer -ne 'Yes') { return }
         & $python $app dismiss --file $selected.Id
         if ($LASTEXITCODE -eq 0) { $list.Items.Remove($selected) } else { Show-Error 'Could not dismiss this job.' }
         $summary.Text=(& $python $app status | Out-String)

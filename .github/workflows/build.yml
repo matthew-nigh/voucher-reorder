@@ -106,12 +106,12 @@ jobs:
       - name: Migrate legacy queue, test no-dialog clone printing and built-in removal
         shell: powershell
         timeout-minutes: 6
-        run: scripts/test_provisioning.ps1 -Installer upgrade-baseline/dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.4-Setup.exe
+        run: scripts/test_provisioning.ps1 -Installer upgrade-baseline/dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.6-Setup.exe
       - name: Install and upgrade in a real standard-user account
         if: ${{ !cancelled() && steps.upgrade.outcome == 'success' }}
         shell: powershell
         timeout-minutes: 6
-        run: scripts/test_standard_user.ps1 -Installer upgrade-baseline/dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.4-Setup.exe
+        run: scripts/test_standard_user.ps1 -Installer upgrade-baseline/dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.6-Setup.exe
       - name: Upload synthetic PDF size and reprint fixtures
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -123,8 +123,8 @@ jobs:
         with:
           name: VoucherReorder-windows-x64
           path: |
-            dist/VoucherReorder-0.2.4-Setup.exe
-            dist/VoucherReorder-0.2.4-sources.zip
+            dist/VoucherReorder-0.2.6-Setup.exe
+            dist/VoucherReorder-0.2.6-sources.zip
             dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 90
@@ -147,7 +147,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          printf '%s\n' 'Download VoucherReorder-0.2.4-Setup.exe to install. The source archive and SHA256SUMS.txt are only for building from source or verifying the download. The optional printer uses built-in Windows tools in one UAC elevation; no separate Provisioning executable is needed. Complete TESTING_ON_WINDOWS.md on plain paper before using check stock. This installer is unsigned.' > release-notes.txt
+          printf '%s\n' 'Download VoucherReorder-0.2.6-Setup.exe to install. The source archive and SHA256SUMS.txt are only for building from source or verifying the download. The optional printer uses built-in Windows tools in one UAC elevation; no separate Provisioning executable is needed. Complete TESTING_ON_WINDOWS.md on plain paper before using check stock. This installer is unsigned.' > release-notes.txt
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | while IFS= read -r asset; do
               case "$asset" in *-Provisioning.exe) gh release delete-asset "$RELEASE_TAG" "$asset" --yes ;; esac

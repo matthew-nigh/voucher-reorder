@@ -11,7 +11,7 @@ on your QuickBooks/printer before putting live check stock in the tray.
 
 ## Install and choose a mode
 
-Download `VoucherReorder-0.2.4-Setup.exe` from the PR's **Actions artifact** (or a
+Download `VoucherReorder-0.2.6-Setup.exe` from the PR's **Actions artifact** (or a
 future tagged Release). Run it normally. Python and PDF tools are included.
 The source archive and SHA256SUMS.txt are only for building from source or verifying
 the download; there is no separate Provisioning executable.
@@ -197,10 +197,12 @@ Queue limits are 100 MiB/job, 100 waiting jobs, and 512 MiB of waiting inputs.
 Successful input/output scratch files are deleted. Failed or uncertain jobs move
 the input to `%LOCALAPPDATA%\VoucherReorder\Needs attention\<unique job>` with
 `reason.json`. Job status lists them and offers **Open folder** and **Retry** using
-current settings. Failed documents remain until explicitly retried or removed;
-they are not expired automatically. Verify physical output before retrying an
-uncertain print, since retry can duplicate it. Waiting/held jobs and successful
-status records retain the existing 24-hour expiry at processor startup.
+current settings. Failed and review jobs expire after seven days at processor startup
+(set `VOUCHER_REORDER_FAILURE_RETENTION_DAYS` to 1–365 to change this). **Dismiss**
+confirms deletion of the status and private payload. Verify physical output before
+retrying an uncertain print, since retry can duplicate it. Waiting/held jobs and
+successful status records retain the existing 24-hour expiry. The signed-in watcher
+checks retention at startup and at least daily; cleanup runs again at processor startup.
 
 “Sent” means handed to Windows, not proof of physical printing. No exactly-once
 guarantee is possible across spooler/device/power failures. Deletion is not secure
@@ -223,7 +225,7 @@ python3 scripts/build_windows.py
 Outputs are in `dist/`: the installer, matching `-sources.zip`, and `SHA256SUMS.txt`.
 The script packages official x64 Windows binaries from SHA-256-pinned downloads in
 `packaging/dependencies.json`; it does not claim to cross-compile those upstream
-programs. `--stage-only` prepares files; `--version 0.2.4` overrides the packaging
+programs. `--stage-only` prepares files; `--version 0.2.6` overrides the packaging
 version for upgrade tests (no tag/release is created). Installations need no network
 in PDF mode. Virtual setup uses the already available Windows PDF driver; policy or missing-driver failures fall back to PDF mode.
 

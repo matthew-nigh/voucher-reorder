@@ -1,5 +1,28 @@
 # Security review — current branch, 2026-11-22
 
+## Follow-up implementation status
+
+The follow-up on this branch fixes CR-03's age-based retention and explicit
+Dismiss deletion. Failure/review payloads and metadata expire after seven days by
+default, configurable from one to 365 days through
+`VOUCHER_REORDER_FAILURE_RETENTION_DAYS`. Cleanup runs when the watcher starts,
+at least daily while it is running, and at processor recovery. Saved PDF output,
+stopped installations, crash leftovers, backups and spooler copies remain outside
+this retention guarantee. A daily scan does not impose a total byte budget.
+
+CR-04 is only partially fixed: port removal no longer restarts the machine-wide
+Spooler and reports a stuck port for later administrator maintenance. Microsoft
+Print To PDF's Local Port still writes to one fixed path. The watcher cannot
+guarantee unique filenames for concurrent or offline jobs. CR-01 and CR-02 remain
+open: no trusted administrator-protected helper or reparse-safe spool handoff has
+been deployed. CR-05 remains open: the bounded process still runs with the user's
+normal-integrity token; Ghostscript already uses `-dSAFER`. A Low-integrity
+renderer with a separate spool handoff requires native Windows validation before
+the optional virtual-printer path can be called fixed. CR-10's version identity is
+updated to v0.2.6, while the native toolchain and distribution-provenance risks
+described below remain. This status supersedes individual historical “Status”
+sentences below.
+
 This review covers `codex/windows-test-fixes-2` / PR #6 at **1180ad8**, plus the
 small hardening changes in the commit containing this report. Matthew's successful
 functional test is useful evidence, but does not validate the privilege boundaries.
@@ -47,14 +70,14 @@ complete advisory audit of all bundled C/C++ libraries.
 | --- | --- | --- | --- |
 | CR-01 | High | **Open** | Optional setup elevates user-writable script content; historical SR-03 is reopened. |
 | CR-02 | High, conditional | **Open; native proof pending** | Privileged fixed-port target is inside a user-controlled directory without reparse-safe binding. |
-| CR-03 | Medium | **Open; documented product policy** | Failed documents and metadata are retained indefinitely; no total failure-store budget. |
-| CR-04 | Medium | **Open** | Fixed-port overlap/offline operation can overwrite a check job; removal can restart the machine spooler. |
+| CR-03 | Medium | **Fixed for age-based retention and Dismiss; residual storage limits remain** | Failed/review payloads and status expire after seven days; Dismiss deletes both. |
+| CR-04 | Medium | **Partially fixed; overwrite risk open** | Removal no longer restarts the machine spooler; the fixed Local Port still permits overlap/offline overwrite. |
 | CR-05 | Medium | **Open; partially mitigated** | Parser processes have resource limits, but retain the user's filesystem/network authority. |
 | CR-06 | Low | **Open** | Filesystem privacy and containment depend on inherited ACLs and stable parent directories. |
 | CR-07 | Low | **Fixed** | Output publication could replace an existing destination despite its no-overwrite contract. |
 | CR-08 | Low | **Fixed at input leaf; races remain CR-06** | Pickup did not reject all special files / Windows reparse attributes before opening. |
 | CR-09 | Low | **Open** | Unsigned distribution and runtime compilation need SAC/WDAC validation and a trusted release process. |
-| CR-10 | Low | **Open** | Build identity, notices and native supply-chain coverage need reconciliation. |
+| CR-10 | Low | **Version identity fixed; supply-chain coverage open** | Metadata, workflow artifact names, guidance and notices now identify v0.2.6; native provenance and release review remain. |
 | CR-11 | Info | **Verified locally / no code fix needed** | Python advisory queries and manifest hashes passed within the stated scope. |
 
 ### CR-01 — High: UAC approves an interpreter, not the script's provenance

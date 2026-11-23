@@ -39,7 +39,7 @@ class Changes:
     def __enter__(self): return self
     def __exit__(self, *args): pass
     def watch_printer(self, enabled): return False
-    def wait(self):
+    def wait(self, timeout=None):
         sys.stdin.buffer.read(1)
         return {"files"}
 serve = watcher._serve

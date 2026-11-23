@@ -68,12 +68,17 @@ def _serve(root, changes_factory=Changes, launch=launch_processor):
     child = None
     guard = Guard(root)
     last_attempt = None
+    next_cleanup = 0.0
     with changes_factory(root) as changes:
         sources = {"files", "printer"}
         try:
             while not stopped(root):
                 warning = None
                 try:
+                    if time.monotonic() >= next_cleanup:
+                        with queue.lock, queue.transaction():
+                            warning = queue.expire()
+                        next_cleanup = time.monotonic() + 24 * 3600
                     settings = load(root / "settings.json")
                     virtual = settings.mode == "virtual"
                     try:
@@ -125,9 +130,9 @@ def _serve(root, changes_factory=Changes, launch=launch_processor):
                     )
                 if stopped(root):
                     break
-                sources = changes.wait()
+                sources = changes.wait(timeout=max(0, next_cleanup - time.monotonic()))
                 while not sources and not stopped(root):
-                    sources = changes.wait()
+                    sources = changes.wait(timeout=max(0, next_cleanup - time.monotonic()))
         finally:
             if child is not None:
                 child.wait()

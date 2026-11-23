@@ -20,7 +20,7 @@ $config=Get-Content (Join-Path $data 'settings.json') -Raw | ConvertFrom-Json
 if ($config.mode -ne 'pdf') { throw 'Legacy upgrade must fall back without elevation' }
 Setup $UpgradeInstaller $true
 $current=Get-Content (Join-Path $root 'current.json') -Raw | ConvertFrom-Json
-if ($current.version -ne '0.2.4') { throw 'Wrong upgraded version' }
+if ($current.version -ne '0.2.6') { throw 'Wrong upgraded version' }
 $app=Join-Path $root ('deployments\'+$current.directory)
 $python=Join-Path $app 'runtime\python.exe'
 $printer=Get-Printer -Name 'Voucher Reorder'

@@ -41,11 +41,11 @@ def test_job_status_cleanup_commands_keep_failed_input(tmp_path, monkeypatch):
     assert sorted(queue.read(j)["state"] for j in queue.jobs()) == ["failed", "queued", "review"]
     monkeypatch.setattr(sys, "argv", ["app.py", "dismiss", "--file", failed_id])
     app.main()
-    assert (tmp_path / "Needs attention" / failed_id / "input.pdf").exists()
+    assert not (tmp_path / "Needs attention" / failed_id).exists()
     assert not failed.exists()
     monkeypatch.setattr(sys, "argv", ["app.py", "dismiss", "--file", review_id])
     app.main()
-    assert (tmp_path / "Needs attention" / review_id / "input.pdf").exists()
+    assert not (tmp_path / "Needs attention" / review_id).exists()
     assert [queue.read(j)["state"] for j in queue.jobs()] == ["queued"]
     with pytest.raises(ValueError, match="failed or review"):
         app.main()

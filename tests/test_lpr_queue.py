@@ -133,6 +133,21 @@ def test_retention(tmp_path):
     assert not job.parent.exists()
 
 
+@pytest.mark.parametrize("state", ["failed", "review"])
+def test_failed_job_retention_removes_payload_and_status(tmp_path, state, monkeypatch):
+    queue, job = enqueue(tmp_path)
+    queue.update(job, state)
+    failure = tmp_path / "Needs attention" / job.parent.name
+    assert (failure / "input.ps").exists()
+    monkeypatch.setenv("VOUCHER_REORDER_FAILURE_RETENTION_DAYS", "2")
+    saved = queue.read(job)
+    saved["created"] = time.time() - 2 * 86400 - 1
+    atomic_json(job, saved)
+    queue.expire()
+    assert not job.parent.exists()
+    assert not failure.exists()
+
+
 def test_ghostscript_vector_pipeline(tmp_path):
     if not shutil.which("gs"):
         pytest.skip("Ghostscript not installed")

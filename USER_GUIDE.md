@@ -2,7 +2,7 @@
 
 **Start with plain paper, not check stock.** Windows 10/11 x64 is supported.
 
-1. **Install or upgrade.** Run `VoucherReorder-0.2.4-Setup.exe` normally. If SmartScreen
+1. **Install or upgrade.** Run `VoucherReorder-0.2.6-Setup.exe` normally. If SmartScreen
    appears, confirm the download came from this project, then choose **More info →
    Run anyway**. PDF mode needs no administrator access. For virtual mode, select
    **Virtual printer (one administrator prompt)** in setup. Setup includes the matching
@@ -62,7 +62,7 @@ Flatten layers before export and split batches larger than 250 pages.
 **If nothing prints:** check Job status, the real Windows printer queue, and paper
 already printed. “Sent” can still mean waiting in Windows. Do not simply print again.
 Exact duplicate PDFs are suppressed for 24 hours. Cancel unwanted jobs in both the
-app and Windows. Inbox arrivals move to unique jobs and are deleted after successful output. Failed inputs remain in Needs attention; Job status offers Open folder and Retry. **Clear finished** removes sent jobs from Job status after confirmation; saved PDFs remain in the output folder. **Dismiss** removes a selected failed or review job from Job status while its input remains in Needs attention.
+app and Windows. Inbox arrivals move to unique jobs and are deleted after successful output. Failed inputs remain in Needs attention for up to seven days; Job status offers Open folder and Retry. **Clear finished** removes sent jobs from Job status after confirmation; saved PDFs remain in the output folder. **Dismiss** confirms deletion of a selected failed or review job, including its input PDF or PostScript file.
 
 **Switch modes:** use the buttons at the top of the app. Adding/removing the virtual
 printer needs UAC; PDF mode does not. During setup, “Setting up the Voucher Reorder

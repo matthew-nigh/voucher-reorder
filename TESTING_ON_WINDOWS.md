@@ -1,4 +1,4 @@
-# Windows acceptance — v0.2.4
+# Windows acceptance — v0.2.6
 
 Use synthetic documents and plain paper. CI is Windows Server 2022 x64; it does
 not qualify every Windows 10/11 driver, QuickBooks release, or interactive UAC path.
@@ -37,7 +37,7 @@ kernel waits. The active document supervisor still enforces resource deadlines.
 
 ## No-admin PDF mode and quiet idle
 
-1. Run `VoucherReorder-0.2.4-Setup.exe` normally as a standard user. Only Setup.exe
+1. Run `VoucherReorder-0.2.6-Setup.exe` normally as a standard user. Only Setup.exe
    is for installation; source and checksums are for building/verifying.
 2. Choose an output folder outside all private job folders, or a real printer.
    Save PDFs to Inbox using existing Microsoft Print to PDF or another exporter.
@@ -93,10 +93,12 @@ kernel waits. The active document supervisor still enforces resource deadlines.
 - Fail parsing or physical printing. Confirm input moves to Needs attention with
   reason.json, Job status lists it, Open folder opens that directory, and Retry
   asks for physical-output reconciliation before requeueing with current settings.
-  Restart and wait past 24 hours: failure input must remain. Successful retry deletes it.
+  Restart after 24 hours: failure input must remain. After the configured seven-day
+  retention period, the watcher must remove both status and input. Successful retry
+  deletes the original failure copy.
 - Confirm **Clear finished** prompts and removes sent job entries immediately,
-  without deleting saved PDFs. Confirm **Dismiss** removes only the selected failed
-  or review entry while its input stays in Needs attention.
+  without deleting saved PDFs. Confirm **Dismiss** prompts and removes the selected
+  failed or review entry and its input PDF/PS from Needs attention.
 - Crash during pickup or processing: receiving jobs with a moved PDF recover;
   interrupted printing is marked review and never automatically resent.
 - Upgrade v0.2.x without elevation: old worker stops, its Run entry and known owned
@@ -105,7 +107,7 @@ kernel waits. The active document supervisor still enforces resource deadlines.
   outstanding jobs; create the clone. Reject a foreign queue with the same name.
 - Uninstall preserves settings and outstanding data. Refused optional printer
   removal must be explicit. Old provisioning installation files are not executed
-  by v0.2.4 and are not part of the new download.
+  by v0.2.6 and are not part of the new download.
 
 ## Physical acceptance
 

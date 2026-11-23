@@ -16,6 +16,7 @@ from .config import Settings, atomic_json
 from .locking import FileLock
 
 RETENTION = 24 * 3600
+FAILURE_RETENTION = 7 * 24 * 3600
 TERMINAL = {"sent", "review", "failed", "discarded", "expired"}
 MAX_JOB = 100 * 1024 * 1024
 
@@ -98,11 +99,14 @@ class Queue:
                     shutil.rmtree(job.parent)
 
     def dismiss(self, identifier):
-        """Remove one failure from status while retaining Needs attention."""
+        """Remove one failure and its private payload after UI confirmation."""
         with self.lock, self.transaction():
             job = next((j for j in self.jobs() if j.parent.name == identifier), None)
             if job is None or self.read(job)["state"] not in {"failed", "review"}:
                 raise ValueError("Select a failed or review job to dismiss.")
+            failure = self.root.parent / "Needs attention" / identifier
+            if failure.exists():
+                shutil.rmtree(failure)
             shutil.rmtree(job.parent)
 
     def accept_file(self, source, settings, document=None):
@@ -238,15 +242,32 @@ class Queue:
 
     def expire(self):
         warning = None
+        try:
+            days = int(os.environ.get("VOUCHER_REORDER_FAILURE_RETENTION_DAYS", "7"))
+            if not 1 <= days <= 365:
+                raise ValueError
+            failure_retention = days * 24 * 3600
+        except ValueError:
+            failure_retention = FAILURE_RETENTION
         for job in self.jobs():
             state = self.read(job)
             try:
                 self.reconcile(job, state)
                 if state["state"] in {"failed", "review"}:
-                    self.preserve_failure(job)
+                    if time.time() - state["created"] > failure_retention:
+                        failure = self.root.parent / "Needs attention" / job.parent.name
+                        if failure.exists():
+                            shutil.rmtree(failure)
+                        shutil.rmtree(job.parent)
+                    else:
+                        self.preserve_failure(job)
                 elif state["state"] in TERMINAL and not self.clean_payload(job):
                     warning = "Private job cleanup deferred. Close files and check storage."
-                elif time.time() - state["created"] > RETENTION:
+                if (
+                    job.exists()
+                    and state["state"] not in {"failed", "review"}
+                    and time.time() - state["created"] > RETENTION
+                ):
                     shutil.rmtree(job.parent)
             except OSError:
                 warning = "Job storage needs attention. Cleanup will be retried."

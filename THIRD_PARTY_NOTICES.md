@@ -26,7 +26,7 @@ The installer contains `licenses/`, populated from **all** upstream source files
 named license/licence/copying/copyright/notice, retaining their source-relative
 paths. `vendor/ghostscript/doc` retains upstream documentation. This preserves the
 actual notices rather than replacing them with this summary. The original source
-archives accompany every installer in `VoucherReorder-0.2.1-sources.zip`.
+archives accompany every installer in `VoucherReorder-0.2.6-sources.zip`.
 
 Relevant transitive components include:
 
@@ -45,11 +45,10 @@ official distribution includes its customary Microsoft C runtime DLLs, which fal
 under the GPL's system/compiler-runtime provisions, not a claim that Microsoft's
 license is GPL-compatible. Keep Python's official distribution notices intact.
 
-Ghostscript additionally needs the Microsoft Visual C++ x64 runtime. Its separate
-proprietary `vcredist_x64.exe` is **excluded** from our package. Optional elevated virtual-printer setup obtains it
-from Microsoft's official endpoint only when missing, checks a valid Microsoft
-Authenticode signature, and installs it as a shared system prerequisite. Microsoft
-terms apply to that prerequisite; it is not relicensed by this project. See
+Ghostscript may depend on Microsoft Visual C++ x64 runtime components. The installer
+does not download or install a separate `vcredist_x64.exe`; the Windows system and
+the packaged runtime must provide required components. Microsoft terms apply to
+those components; they are not relicensed by this project. See
 [Microsoft's redistribution documentation](https://learn.microsoft.com/en-us/cpp/windows/redistributing-visual-cpp-files).
 The shared runtime and OS driver are left installed on uninstall. PDF handoff never
 invokes Ghostscript or installs this prerequisite; it uses the packaged Python runtime and the statically linked PDFium DLL (only Windows system DLL imports).
@@ -57,7 +56,7 @@ invokes Ghostscript or installs this prerequisite; it uses the packaged Python r
 ## Source availability and reproducing modifications
 
 Always distribute these three files together, in the same downloadable artifact or
-Release: `VoucherReorder-0.2.1-Setup.exe`, `VoucherReorder-0.2.1-sources.zip`, and
+Release: `VoucherReorder-0.2.6-Setup.exe`, `VoucherReorder-0.2.6-sources.zip`, and
 `SHA256SUMS.txt`. **Do not distribute only the executable and rely on an upstream
 URL as the corresponding-source offer.** Our workflow uploads/releases all three.
 The source ZIP includes this application's build/install scripts, tests, license,

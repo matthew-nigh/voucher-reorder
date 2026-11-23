@@ -33,6 +33,7 @@ class FakeChanges:
             (self.root / "stop").touch()
             return {"files"}
         self.now += timeout
+        (self.root / "stop").touch()
         return {"timeout"}
 
     def __enter__(self):
@@ -94,7 +95,8 @@ def test_idle_virtual_watcher_blocks_without_repeated_probes_or_spawns(tmp_path,
     changes.events = [lambda: set(), lambda: set()]
     watcher._serve(tmp_path, lambda root: changes)
     assert len(probes) == 1
-    assert changes.waits == [None, None, None]
+    assert len(changes.waits) == 3
+    assert all(0 < wait <= 86400 for wait in changes.waits)
     assert json.loads((tmp_path / "watcher.json").read_text())["state"] == "stopped"
 
 

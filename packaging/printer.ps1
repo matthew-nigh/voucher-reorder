@@ -21,9 +21,8 @@ function Wait-PrinterRemoved {
 function Remove-DedicatedPort([string]$PortName) {
     if ($PortName -eq 'NUL:') { return } # Shared system port, never ours to remove.
     $lastError = 'Port still listed after removal'
-    for ($phase = 0; $phase -lt 2; $phase++) {
-        $delay = 100
-        for ($attempt = 0; $attempt -lt 30; $attempt++) {
+    $delay = 100
+    for ($attempt = 0; $attempt -lt 30; $attempt++) {
             # Enumerate with Stop: a query failure must not masquerade as absence.
             $remaining = @(Get-PrinterPort -ErrorAction Stop | Where-Object Name -eq $PortName)
             if (-not $remaining) { return }
@@ -48,24 +47,8 @@ function Remove-DedicatedPort([string]$PortName) {
             if (-not (Get-PrinterPort -ErrorAction Stop | Where-Object Name -eq $PortName)) { return }
             Start-Sleep -Milliseconds $delay
             $delay = [Math]::Min(1000, $delay * 2)
-        }
-        if ($phase -eq 0) {
-            $remaining = @(Get-PrinterPort -ErrorAction Stop | Where-Object Name -eq $PortName)
-            if (-not $remaining) { return }
-            if ($remaining.PortMonitor | Where-Object { $_ -notin @('Local Monitor','Local Port') }) {
-                throw "Unexpected monitor for dedicated port '$PortName'."
-            }
-            if (Get-Printer -ErrorAction Stop | Where-Object PortName -eq $PortName) {
-                throw "Port '$PortName' is still used after 30 attempts."
-            }
-            # Restart only when no queued jobs can be interrupted. A stale
-            # local monitor handle can otherwise survive every removal attempt.
-            $jobs = @(Get-Printer -ErrorAction Stop | ForEach-Object { Get-PrintJob -PrinterName $_.Name -ErrorAction Stop })
-            if ($jobs) { throw 'Queued jobs prevent a spooler restart for port removal.' }
-            Restart-Service -Name Spooler -ErrorAction Stop
-        }
     }
-    throw "Dedicated port '$PortName' remains after 60 removal attempts and a spooler restart. Last error: $lastError; port: $($remaining | ConvertTo-Json -Compress)"
+    throw "Dedicated port '$PortName' remains after 30 removal attempts. The machine Spooler was not restarted. An administrator may restart it during planned maintenance, then retry removal. Last error: $lastError"
 }
 try {
     if ($TargetSid -notmatch '^S-1-5-21-\d+-\d+-\d+-\d+$' -or [IO.Path]::GetFileName($port) -ne 'job.pdf' -or $port.StartsWith('\\')) { throw 'Invalid per-user printer target.' }
