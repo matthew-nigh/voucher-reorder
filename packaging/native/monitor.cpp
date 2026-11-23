@@ -2,7 +2,11 @@
 // No PDF parsing, user paths, executable launches, or network endpoints.
 #include "secure.hpp"
 #include <winspool.h>
+// The Windows SDK header does not supply MinGW's C-linkage guard. Match its
+// declarations to the undecorated entry point exported for the spooler below.
+extern "C" {
 #include <winsplp.h>
+}
 #include <rpc.h>
 #include <cstring>
 
