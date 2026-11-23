@@ -1,3 +1,377 @@
+# Security review — current branch, 2026-11-22
+
+This review covers `codex/windows-test-fixes-2` / PR #6 at **1180ad8**, plus the
+small hardening changes in the commit containing this report. Matthew's successful
+functional test is useful evidence, but does not validate the privilege boundaries.
+The requested build is identified as v0.2.6; **the checked-out project metadata and
+workflow artifact names still say 0.2.4**. Findings are tied to the source revision,
+not an assumed binary/tag match (CR-10). No GitHub CI was queried during this review.
+
+**Release assessment:** no Critical finding was established. Two High findings
+remain open in the optional virtual-printer path; one is source-confirmed execution
+of mutable code after UAC approval, and the other requires native confirmation of
+privileged file redirection. Do not treat the former review's “protected provisioning
+package” mitigation as current. PDF Inbox mode avoids these two elevation/port
+boundaries, but retains the file, parser, privacy and distribution risks below.
+Windows security acceptance is still needed before broader virtual-printer rollout.
+
+The entire earlier review is preserved verbatim under **Historical review record**.
+Its line numbers, architecture, test counts and remediation statuses describe prior
+releases. This section supersedes those statuses for the current code.
+
+## Threat model and scope
+
+| Asset / actor | Trust boundary and consequence |
+| --- | --- |
+| Check/voucher PDFs, bank/MICR data, document names | Original, queued, reordered, failed and spooled copies require confidentiality; altered, duplicated or omitted checks also have financial consequences. |
+| User files | Inbox pickup, output publication, cleanup and uninstall must not overwrite/delete unrelated files or follow attacker-controlled paths. |
+| Standard user / same-user processes | Can modify their installation, AppData, settings and inputs. Same-token file changes alone are not privilege escalation. Passing those bytes or paths to an administrator or SYSTEM creates a distinct boundary. |
+| Other local users | Should be excluded by profile/file ACLs and printer SDDL. No production TCP/LPR listener remains. Shared/redirected output folders may intentionally have different permissions. |
+| Malicious PDF or Inbox entry | Filename, PDF objects/streams, special files and reparse points are untrusted. A dropped PDF must not control executable arguments, escape storage or indefinitely stop other work. |
+| Printer / network | Windows drivers, spooler, shared print servers, transport and physical device see sensitive data. The app does not add transport authentication/encryption or control remote retention. |
+| Supply chain | Repository, Actions, runners, Python packages, native downloads, NSIS and distribution must preserve reviewed bytes. Hash pins are integrity checks, not publisher authentication. |
+
+Reviewed NSIS, all application modules, PowerShell/C# helpers, build scripts,
+dependency/license files, workflow permissions/triggers, and security-related tests.
+Tests used only synthetic data and fake senders. Local environment: Linux,
+CPython **3.13.5**, pypdf **7.1.1**, pytest **9.2.0**, Ruff **0.17.6**, PyMuPDF
+**1.28.2**. The packaged/CI Python pin is **3.13.12**, not the local interpreter.
+No Windows PowerShell runtime is available here. UAC, native junction/ACL semantics,
+spooler impersonation, Windows Add-Type, Smart App Control (SAC), printer/network
+traffic and physical output were **not executed**. This is not native fuzzing or a
+complete advisory audit of all bundled C/C++ libraries.
+
+## Severity-ranked current findings
+
+| ID | Severity | Status in this commit | Finding |
+| --- | --- | --- | --- |
+| CR-01 | High | **Open** | Optional setup elevates user-writable script content; historical SR-03 is reopened. |
+| CR-02 | High, conditional | **Open; native proof pending** | Privileged fixed-port target is inside a user-controlled directory without reparse-safe binding. |
+| CR-03 | Medium | **Open; documented product policy** | Failed documents and metadata are retained indefinitely; no total failure-store budget. |
+| CR-04 | Medium | **Open** | Fixed-port overlap/offline operation can overwrite a check job; removal can restart the machine spooler. |
+| CR-05 | Medium | **Open; partially mitigated** | Parser processes have resource limits, but retain the user's filesystem/network authority. |
+| CR-06 | Low | **Open** | Filesystem privacy and containment depend on inherited ACLs and stable parent directories. |
+| CR-07 | Low | **Fixed** | Output publication could replace an existing destination despite its no-overwrite contract. |
+| CR-08 | Low | **Fixed at input leaf; races remain CR-06** | Pickup did not reject all special files / Windows reparse attributes before opening. |
+| CR-09 | Low | **Open** | Unsigned distribution and runtime compilation need SAC/WDAC validation and a trusted release process. |
+| CR-10 | Low | **Open** | Build identity, notices and native supply-chain coverage need reconciliation. |
+| CR-11 | Info | **Verified locally / no code fix needed** | Python advisory queries and manifest hashes passed within the stated scope. |
+
+### CR-01 — High: UAC approves an interpreter, not the script's provenance
+
+**Location:** `packaging/request_printer.ps1:8`, `:10`, `:15`;
+`packaging/installer.nsi:21`; `packaging/printer.ps1`.
+
+**Impact / evidence:** setup reads `printer.ps1` from the per-user deployment,
+embeds its contents in `-EncodedCommand`, and runs system PowerShell with `-Verb
+RunAs`. A standard user or same-user process can replace that script before the
+snapshot. An administrator approving the legitimate-looking PowerShell prompt,
+including alternate credentials, then executes those replacement bytes. Encoding
+and the Microsoft signature on PowerShell do not authenticate the embedded code.
+Snapshotting closes a later file-reopen race, not this provenance problem. This is
+conditional on approval, **not a UAC bypass**. No elevated exploit was executed.
+
+**Recommendation:** use a narrow, independently authenticated provisioning helper
+installed in an administrator-protected location, with protected dependencies and
+small validated inputs; or have an administrator provision from independently
+verified trusted media. Bind approval to the code actually executed. A hash check
+inside another user-writable script is insufficient. Until resolved, favor PDF
+Inbox mode on machines where standard users must not influence elevated code.
+**Status: open; redesign is outside this small hardening commit.**
+
+### CR-02 — High, conditional: privileged fixed-port output follows mutable paths
+
+**Location:** `packaging/printer.ps1:9`, `:71`, `:87`, `:90`, `:96`;
+`packaging/request_printer.ps1:4`; `voucher_reorder/inbox.py:24`.
+
+**Impact / evidence:** elevated setup canonicalizes the string, checks the SID
+shape, rejects UNC paths and requires the leaf `job.pdf`. It does not bind the
+path to the target SID's actual profile, validate every parent/file reparse point,
+or hold a trusted directory handle. It adds SYSTEM access to the existing folder
+and makes that user-owned path a Local Port output destination. A junction or
+file replacement before setup or later writes could redirect an elevated ACL
+operation or spooler write to an unintended location. Actual protected-file
+impact depends on Windows Local Monitor/driver impersonation and reparse handling;
+**no SYSTEM arbitrary-write or elevation exploit is claimed as demonstrated**.
+The new input-leaf check runs after spooler output and cannot protect this boundary.
+
+**Recommendation:** verify this in a disposable Windows VM with benign sentinel
+files, both same-user and alternate-admin setup, before and after provisioning.
+Trace the effective writer token and final handle target. Use an administrator-owned
+spool destination with authenticated handoff or an equivalent handle-based design
+that cannot be retargeted by the desktop user. Do not rely on a one-time `resolve`
+or `Test-Path` check. **Status: open, high-priority native validation/design work.**
+
+### CR-03 — Medium: 24 hours is not a universal retention limit
+
+**Location:** `voucher_reorder/queue.py:68`, `:100`, `:137`, `:239`;
+`voucher_reorder/worker.py:108`; `voucher_reorder/spool.py:113`;
+`README.md:197`; `USER_GUIDE.md:65`.
+
+**Impact / evidence:** `failed`/`review` inputs move to `Needs attention`; expiry
+always preserves them, regardless of age. Dismiss removes only the status entry.
+A synthetic old failed job retained both state and payload after `expire()`.
+The 512 MiB admission accounting excludes `Needs attention`, so repeated rejected
+arrivals can accumulate full documents until disk pressure stops work. Failed
+states also remain in queue scans until dismissed. The 24-hour cleanup for other
+states runs at processor startup, not continuously; an idle/stopped installation
+has no hard deletion deadline. Saved output PDFs, unclaimed Inbox/Incoming files,
+legacy receipts, spool document titles, crash leftovers, backups and printer/server
+copies are outside that deadline. This is partly intentional recovery policy,
+not a reason to silently destroy failed checks in a security patch.
+
+**Recommendation:** define separate retention policies for failed checks, successful
+status, manual exports and metadata; expose age/size and explicit deletion of
+failure payloads; bound aggregate failure storage. Design cleanup scheduling and
+crash recovery to match the promised deadline. Use disk encryption and local/private
+output destinations as appropriate; ordinary unlink is not secure erasure.
+**Status: open; existing recovery/retention behavior deliberately unchanged.**
+
+### CR-04 — Medium: fixed-port serialization is best effort, not durable isolation
+
+**Location:** `voucher_reorder/spool.py:95`, `:116`; `voucher_reorder/watcher.py:91`;
+`packaging/printer.ps1:61`; `README.md` fixed-port concurrency guidance.
+
+**Impact / evidence:** all virtual jobs write the same `Incoming/job.pdf`. The
+notification broker attempts to pause competing jobs and warns when it observes
+overlap, but cannot guarantee it acts before a second writer or while signed out,
+stopped or blocked. Missing or overwritten check jobs are an integrity concern.
+This is source-confirmed and documented; native concurrent-job testing was not
+rerun. Queue SDDL is restricted to the owner plus SYSTEM/administrators, and the
+existing-printer path explicitly disables sharing and retained printed jobs.
+Port removal can restart the **machine-wide** Spooler after checking that no jobs
+are queued; a new job can arrive between the check and restart.
+
+**Recommendation:** use unique durable per-job destinations/authenticated handoff.
+Until then enforce the documented one-job-at-a-time operational limit with an
+active signed-in watcher and reconcile source batches against output. Make any
+spooler restart a separately explained maintenance action; preserve unrelated
+queues/ports. **Status: open; no printer behavior changed here.**
+
+### CR-05 — Medium: bounded execution is not an OS security sandbox
+
+**Location:** `voucher_reorder/bounded.py:60`, `:134`, `:212`;
+`voucher_reorder/printing.py:54`; `voucher_reorder/windows.py:26`;
+`packaging/CheckedPrint.cs:103`.
+
+**Impact / evidence:** untrusted pypdf parsing, PDFium rendering and legacy
+Ghostscript conversion run with the user's token. Windows Job memory limits,
+process-tree termination, deadlines, page/output limits and Ghostscript `-dSAFER`
+reduce DoS but do not deny access to the user's other files or network. A native
+parser exploit would retain those rights; **none was demonstrated or identified
+by the Python audit**. Many bounded malicious jobs can still consume sustained
+CPU. A 250-page print budget can exceed two hours by design.
+
+**Recommendation:** investigate a restricted-token/AppContainer parser/renderer
+with only private inputs/outputs accessible, and keep privileged provisioning
+separate. Maintain native-library advisory monitoring and bounded fuzz corpora.
+Existing tests cover malformed xref, resource/decode limits, timeout/reaping and
+bad-job isolation; the new tests add corrupt page trees/truncated streams and
+catalog/page-action removal. Fresh output omits catalog JavaScript/attachments,
+page additional actions and source title in the tested fixture; it is not a
+proof of arbitrary-PDF sanitization. **Status: open; existing resource controls retained.**
+
+### CR-06 — Low: inherited ACLs and parent-path races remain assumptions
+
+**Location:** `voucher_reorder/config.py:71`, `:92`, `:97`;
+`voucher_reorder/queue.py:25`, `:53`, `:68`, `:166`;
+`voucher_reorder/inbox.py:16`; `packaging/installer.nsi:116`.
+
+**Impact / evidence:** Inbox, queue and output creation mostly inherit ACLs.
+Python's mode `0700` is not a full Windows DACL policy; setup only adds SYSTEM to
+Incoming, without removing pre-existing broad grants. Existing shared/redirected
+folders may expose PDFs to other accounts. Output `resolve()` blocks aliases into
+private folders at check time, but parents may change afterward. Queue enumeration
+follows child directory links; a benign Linux reproduction linked a job directory
+to an external synthetic folder and `update(..., 'sent')` deleted that folder's
+`input.pdf`. This required write access to the queue, **not merely a dropped PDF**,
+and establishes neither cross-user access nor escalation under normal profile ACLs.
+Uninstall/cleanup also rely on trusted roots. The Inbox leaf check is not a
+handle-based no-follow guarantee and its open/rename race remains.
+
+**Recommendation:** verify effective owner/SYSTEM/admin-only access for AppData
+and temp roots on native Windows, including upgraded/redirected profiles. Reject
+unexpected reparse ancestors and validate final handles for reads/moves/deletes;
+use ACL-protected roots to prevent concurrent directory substitution. Validate
+queue state/schema and quarantine corrupt state rather than blocking all work.
+Treat network/shared output permissions and printer transport security as explicit
+user/admin decisions. **Status: open; no cross-user exposure was demonstrated.**
+
+### CR-07 — Low: output publication could overwrite a destination
+
+**Location:** `voucher_reorder/printing.py:29`, `:45`;
+`voucher_reorder/filesystem.py:17` (new helper).
+
+**Impact / evidence:** the old `os.replace` publication overwrote any existing
+UUID destination, contrary to the function's contract. UUID unpredictability
+makes accidental collision negligible and practical hostile placement difficult;
+this is not arbitrary overwrite of a chosen filename. Forced-collision tests
+reproduced replacement of both a normal file and a symlink directory entry
+(the symlink's target was not overwritten).
+
+**Recommendation / fix:** publish atomically with no replacement: Windows
+`os.rename`, POSIX exclusive `os.link`, then clean the temporary source in the
+existing `finally`. A collision fails and preserves the existing entry. Existing
+bounded Windows sharing retries remain; metadata replacement keeps its old
+semantics. POSIX filesystems without hard-link support fail closed. This does not
+solve shared-folder ancestor races (CR-06).
+**Status: fixed in this commit; collision and sharing-retry tests pass.**
+
+### CR-08 — Low: special/reparse inputs reached the open operation
+
+**Location:** `voucher_reorder/queue.py:115`; `voucher_reorder/inbox.py:16`.
+
+**Impact / evidence:** pickup previously checked only `is_symlink()`. A FIFO named
+`.pdf` on POSIX could block the event broker in `open` before bounded parsing;
+Windows reparse files not classified as symbolic links were not excluded.
+Directories were eventually rejected by open/seek, not explicitly at admission.
+Three synthetic attribute cases prove that old code reached the open operation.
+These tests do not create or validate a native Windows reparse attack. FIFO
+behavior primarily concerns source/Linux use, not ordinary NTFS files.
+
+**Recommendation / fix:** `lstat` before opening, require a regular file and
+reject `FILE_ATTRIBUTE_REPARSE_POINT`. Existing ordinary PDFs and failed-file
+continuation still work. This intentionally refuses reparse-backed cloud placeholders
+rather than following them; use a locally materialized regular PDF. Parent changes
+and check/open/rename races still require CR-06's handle-level work.
+**Status: fixed for pre-existing input-leaf types in this commit.**
+
+### CR-09 — Low: unsigned package and Add-Type are not deployment trust guarantees
+
+**Location:** `packaging/installer.nsi:21`; `packaging/settings.ps1:6`;
+`packaging/user_links.ps1:3`; `packaging/settings_identity.cs`;
+`packaging/print_pages.ps1:14`; `voucher_reorder/windows.py:151`;
+`.github/workflows/build.yml` release notes.
+
+**Impact / evidence:** NSIS requests a standard-user install; HKCU/LocalAppData
+integration does not require admin. There is no all-users/admin installer mode.
+Optional setup is the only intentional elevation path (CR-01). Setup and app scripts
+are unsigned. SAC/WDAC/AppLocker/Constrained Language can block setup, scripts,
+DLLs or `Add-Type` compilation of `settings_identity.cs`/`CheckedPrint.cs` even when
+Matthew's machine works. Process-scoped `-ExecutionPolicy Bypass` does not change
+machine policy and is not an application-control bypass. Settings identity C#
+uses fixed COM property keys and shell APIs, with no document text compiled into
+source; tampering with it is same-user code execution unless launched elevated.
+
+**Recommendation:** sign/authenticate distributed artifacts, validate clean Windows
+10/11 and SAC/WDAC policies including runtime compilation, and publish checksums
+through a trusted channel. Consider precompiled authenticated helpers where policy
+requires them. Do not ask users to disable system-wide protections as a workaround.
+**Status: open; no native application-control validation performed.**
+
+### CR-10 — Low: release identity and native build provenance need follow-through
+
+**Location:** `pyproject.toml:7`; `.github/workflows/build.yml`;
+`packaging/dependencies.json`; `scripts/build_windows.py:75`, `:147`;
+`THIRD_PARTY_NOTICES.md`.
+
+**Impact / evidence:** requested v0.2.6 still builds as 0.2.4 in source/workflow;
+notices refer to 0.2.1 archive names and a VC-runtime download which current setup
+no longer performs. This impairs artifact identification and operational guidance.
+Actions are full-SHA pinned; Python dependencies, including setuptools, are pinned
+and the development lock uses hashes. Native downloads are SHA-256 pinned.
+Hosted runner tools, Visual Studio/7-Zip, apt packages and the Chocolatey supply
+chain remain external trust inputs, although NSIS is version-pinned and tool
+versions are recorded. No recurring audit step is present in the workflow.
+
+**Recommendation:** reconcile version/tag/artifact/notices before publishing,
+record/verify native dependencies and toolchain provenance, run automated advisory
+checks, and enforce release-environment reviewers and protected tags outside the
+repository. Preserve GPL-3.0-or-later application and AGPL Ghostscript corresponding
+sources alongside binaries; keep Python/pypdf/PDFium and transitive notices.
+Source/notices packaging exists and PDFium wheel licenses are extracted, but this
+review did not rebuild/audit a final v0.2.6 installer or establish legal completeness.
+**Status: open; pins, licenses and workflow were not changed by this commit.**
+
+### CR-11 — Info: dependency and hash checks passed within a bounded scope
+
+**Location:** `requirements-dev.txt`; `pyproject.toml`;
+`packaging/dependencies.json`; `scripts/build_windows.py:29`.
+
+**Impact / evidence:** pip-audit **2.10.1**, installed in a separate temporary
+virtual environment, reported **0 known vulnerabilities for 14 queried package
+versions** on 2026-11-22. The hashed requirements query covered 12 applicable Linux
+pins; a second explicit-pin query included Windows-only colorama and pypdfium2.
+Audited pins: Pygments 2.21.0, charset-normalizer 3.5.2, colorama 0.4.6,
+iniconfig 2.3.1, packaging 26.3, pillow 13.0.0, pluggy 1.7.0, pymupdf 1.28.2,
+pypdf 7.1.1, pytest 9.2.0, reportlab 4.5.1, ruff 0.17.6, setuptools 84.2.1,
+pypdfium2 5.15.2. Both queries used `--no-deps --disable-pip`; the queried target packages
+were not installed or executed by the audit. All **7/7** pinned downloaded archives/wheels matched
+the manifest SHA-256, including the two pypdf artifacts fetched for this check.
+
+**Recommendation:** rerun before release. Python advisory results do **not** cover
+CPython 3.13.12, Ghostscript 10.08.0, embedded PDFium 159.0.8149.0 or their complete
+native dependency graphs, Windows drivers or NSIS. Querying the wrapper wheel is
+not a complete PDFium CVE assessment. Matching hashes do not prove trusted upstream
+origin or absence of vulnerabilities. **Status: verified checks; no code fix needed.**
+
+## Additional reviewed controls and limits
+
+| Area | Current result |
+| --- | --- |
+| Command construction | Python passes argument lists without `shell=True`; PowerShell uses `-File`, not evaluation of printer/PDF strings. UAC action is a ValidateSet, SID is locally obtained, and single quotes in the path are doubled before encoding. No filename/printer-name shell injection was found. User-controlled elevated script bytes remain CR-01. |
+| Temp files | JSON and exported PDFs use unpredictable `mkstemp`, flush/fsync and publication; printing creates private per-job temp space and kills bounded children before cleanup. CLI inspection uses a randomly created system-temp directory. Abrupt process death can leave inspection/export temp copies; no startup sweep covers all such locations (CR-03/06). Settings Add-Type uses the current user's compiler temp environment; no check contents are deliberately compiled. |
+| Logging | `ErrorCapture` caps retained diagnostics at 8 KiB and allowlists/redacts messages. `processing-error.json` stores operation/type/numeric codes; checked print job title is generic. Persistent queue/failure metadata, saved paths, spool metadata and legacy receipts can contain identifying filenames/titles. Elevated `Write-Error` may expose paths/queue metadata to local diagnostics. No PDF/MICR content logging was found in the normal worker; CLI tracebacks, crash dumps and external drivers are outside that guarantee. |
+| PDF controls | Limits include 100 MiB admission, 250 pages, 256 MiB output/expanded checks, 768 MiB worker / 384 MiB Windows print job memory and deadlines. Fresh catalog, layer/annotation/image rejection and vector checks reduce unsafe/changed output. They do not authenticate the payee/amount or ensure a malicious document is financially correct. |
+| CI authorization | `pull_request`, not `pull_request_target`; global `contents: read`; only the tag-push release job gets `contents: write`, with `environment: release`. No workflow reference to a custom secret was found; release uses the job token. Shell tag handling uses a quoted environment variable. SHA-pinned actions and synthetic fixture uploads are positive controls. Checkout persists its read token by default; environment protection settings were not queried. |
+| Network/printer | No production TCP listener or telemetry/upload path found. Shared/network printers and UNC output folders remain possible: remote access, SMB/print transport, driver trust, device storage and spool cleanup are Windows/admin responsibilities. App deletion cannot erase those copies. |
+| Install/uninstall | Per-user guard acquired before extraction, versioned staging and rollback/retirement controls remain. Uninstall preserves user data/held jobs; silent uninstall skips optional printer removal. No broad Everyone grant was found. Native concurrent installs, junction attacks, alternate-admin UAC and corrupted current.ini handling remain acceptance work; a per-user installation is not a boundary against its own owner. |
+
+## Tests, small fixes and remaining acceptance
+
+Only two runtime changes were made: **CR-07 atomic no-overwrite PDF publication**
+and **CR-08 regular/non-reparse input-leaf admission**. The shared bounded retry
+helper preserves metadata replacement behavior. No installer, elevation, printer,
+retention, dependency or workflow behavior was changed. Added **17 security test
+cases** in `tests/test_security_current.py`; adjusted the existing publication-retry
+test to exercise the no-overwrite operation.
+
+Baseline: **333 passed, 1 skipped**; Ruff lint passed. Five focused cases deliberately
+failed against the original `1180ad8` runtime files (two output collisions, three
+special/reparse input cases). Restoring the hardening made them pass. The focused
+security/filesystem run passed **24 tests, 1 skipped**. Separate synthetic probes
+confirmed external-folder mutation through a same-user queue directory link and
+retention of an old failed payload; no real user data was touched.
+
+Final checks for this commit:
+
+```text
+.venv/bin/python -m pytest -q                  # 350 passed, 1 skipped (15.87 s)
+.venv/bin/ruff check .                        # passed; 0 lint errors
+.venv/bin/ruff format --check .               # 51 files already formatted
+git diff --check                             # no whitespace errors
+```
+
+Audit commands used (the second file contains the 13 lock pins, without platform
+markers, plus `pypdfium2==5.15.2`):
+
+```sh
+/tmp/voucher-security-audit-venv/bin/pip-audit -r requirements-dev.txt --no-deps --disable-pip --format json --output /tmp/voucher-security-pip-audit.json
+/tmp/voucher-security-audit-venv/bin/pip-audit -r /tmp/voucher-security-all-pins.txt --no-deps --disable-pip --format json --output /tmp/voucher-security-all-pins.json
+```
+
+Before wider virtual-printer use, perform the CR-01/02 native tests, inspect
+AppData/temp/output ACLs from a second standard account, test pre/post-setup
+junctions and handle targets, offline/overlapping fixed-port jobs, shared printer
+transport/storage, and SAC/WDAC with Add-Type. Use fake vouchers and disposable
+VMs. No Windows test, build, signing check or post-push CI result is claimed here.
+
+## Relationship to earlier findings
+
+SR-01's old pypdf version is replaced and bounded execution remains, with residual
+CR-05. SR-02/SR-09's LPR listener is removed; fixed-port CR-02/04 replace those
+threats. **SR-03's protected-helper mitigation no longer applies: CR-01 reopens it.**
+SR-04 malformed-file isolation, SR-06 layer rejection and SR-07 installer locking
+remain. New Inbox arrivals now move to unique jobs, superseding SR-05's receipt
+model; legacy receipts/manual byte deduplication still exist. SR-08 no longer means
+all terminal payloads are deleted: failed/review preservation is intentional
+(CR-03). SR-10 now uses checked PDFium EMF/GDI rather than Sumatra; native printer
+acceptance remains necessary. SR-11 pinning improved, with CR-09/10/11 limits.
+
+---
+
+## Historical review record — preserved verbatim, superseded above
+
 # Independent security and quality review
 
 > Historical notes below describe earlier releases. v0.2.3 replaces retained RAW

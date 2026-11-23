@@ -71,7 +71,7 @@ def test_permanent_publish_failure_is_bounded_and_preserves_old_file(
 def test_pdf_publication_retries_same_destination(tmp_path, monkeypatch):
     source = tmp_path / "output.pdf"
     source.write_bytes(sample().getvalue())
-    real_replace = os.replace
+    publish = os.rename if os.name == "nt" else os.link
     targets = []
 
     def busy_once(source, destination):
@@ -80,9 +80,9 @@ def test_pdf_publication_retries_same_destination(tmp_path, monkeypatch):
             error = PermissionError("scanner holds temp file")
             error.winerror = 32
             raise error
-        return real_replace(source, destination)
+        return publish(source, destination)
 
-    monkeypatch.setattr(filesystem, "os", SimpleNamespace(replace=busy_once))
+    monkeypatch.setattr(filesystem, "os", SimpleNamespace(name=os.name, rename=busy_once, link=busy_once))
     monkeypatch.setattr(filesystem, "time", SimpleNamespace(sleep=lambda delay: None))
     settings = replace(Settings(), output_mode="pdf", output_folder=str(tmp_path / "saved"))
     destination = save_pdf(source, settings, tmp_path)

@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import threading
 import time
 import uuid
@@ -112,7 +113,10 @@ class Queue:
         """
         from .inbox import exclusive_read
 
-        if source.is_symlink():
+        attributes = source.lstat()
+        if not stat.S_ISREG(attributes.st_mode) or (
+            getattr(attributes, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
+        ):
             raise ValueError("Watched PDFs must be regular files.")
         with (
             self.lock,

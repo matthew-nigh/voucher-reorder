@@ -2,7 +2,7 @@
 
 from pypdf import PdfReader
 
-from .filesystem import replace_file
+from .filesystem import publish_new_file
 
 
 def validate_pages(pdf, settings):
@@ -42,8 +42,8 @@ def save_pdf(source, settings, root):
             shutil.copyfileobj(input_file, output, length=65536)
             output.flush()
             os.fsync(output.fileno())
-        # UUID filenames avoid collisions; the private temp is on the same volume.
-        replace_file(temporary, destination)
+        # Refuse collisions atomically, including a name created during the copy.
+        publish_new_file(temporary, destination)
     finally:
         from pathlib import Path
 
