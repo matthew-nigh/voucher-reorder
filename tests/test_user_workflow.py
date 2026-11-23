@@ -209,12 +209,34 @@ def test_optional_elevation_success_decline_and_failure(tmp_path, monkeypatch, e
     assert module.main("auto", ui=ui) == 0
     assert len(calls) == 1  # Exactly one elevation-helper invocation.
     assert len(messages) == (0 if ui else 1)
-    detail = (tmp_path / "mode-status.txt").read_text()
-    assert ("blocked, declined or failed" in detail) == (exit_code != 0)
+    status_file = tmp_path / "mode-status.txt"
+    assert status_file.exists() == ui
+    if ui:
+        assert ("blocked, declined or failed" in status_file.read_text()) == (exit_code != 0)
     saved = load(tmp_path / "settings.json")
     assert saved.mode == mode
     assert saved.printer == config().printer
     assert saved.offsets[0] == list(config().offsets[0])
+
+
+@pytest.mark.parametrize("exit_code", [0, 1])
+def test_installer_mode_result_is_only_reported_to_installer(tmp_path, monkeypatch, capsys, exit_code):
+    source = Path(__file__).parents[1] / "packaging/mode_setup.py"
+    spec = importlib.util.spec_from_file_location("test_mode_install", source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    save(tmp_path / "settings.json", config())
+    (tmp_path / "mode-status.txt").write_text("stale status")
+    monkeypatch.setattr(module, "data_dir", lambda: tmp_path)
+    monkeypatch.setattr(module, "stop_worker", lambda *args: None)
+    monkeypatch.setattr(module, "powershell", lambda *args: ["fake-command"])
+    monkeypatch.setattr(module.subprocess, "CREATE_NO_WINDOW", 0, raising=False)
+    monkeypatch.setattr(
+        module.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(returncode=exit_code)
+    )
+    assert module.main("setup") == 0
+    assert "mode is ready" in capsys.readouterr().out
+    assert not (tmp_path / "mode-status.txt").exists()
 
 
 @pytest.mark.parametrize("outcome", [0, 1, "timeout"])

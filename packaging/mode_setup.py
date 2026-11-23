@@ -16,6 +16,8 @@ def main(action, ui=False):
     initialized = root / "mode-initialized"
     if action == "auto" and initialized.exists():
         return 0
+    if action == "setup":
+        (root / "mode-status.txt").unlink(missing_ok=True)
     remove = action in ("pdf", "remove")
     settings = load(config)
     installed_marker = root / "virtual-installed"
@@ -53,7 +55,8 @@ def main(action, ui=False):
         initialized.touch()
         if action not in ("remove", "setup"):
             register_user()
-        (root / "mode-status.txt").write_text(detail, encoding="utf-8")
+        if ui or action == "remove":
+            (root / "mode-status.txt").write_text(detail, encoding="utf-8")
         if action == "setup" or ui:
             print(detail)
         else:
@@ -66,7 +69,8 @@ def main(action, ui=False):
         if action not in ("remove", "setup"):
             register_user()
         detail = "Virtual printer setup was unavailable. PDF handoff mode is ready; open Voucher Reorder from Start."
-        (root / "mode-status.txt").write_text(detail, encoding="utf-8")
+        if ui or action == "remove":
+            (root / "mode-status.txt").write_text(detail, encoding="utf-8")
         if action == "setup" or ui:
             print(detail)
         else:

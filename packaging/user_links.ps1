@@ -1,5 +1,6 @@
 param([ValidateSet('install','remove')][string]$Action, [string]$Candidate)
 $ErrorActionPreference = 'Stop'
+Add-Type -Path (Join-Path $PSScriptRoot 'settings_identity.cs')
 # v0.2.x shipped the HKCU Run worker. Also retire known older per-user tasks,
 # only when their action belongs to this installation and principal is this user.
 $service = New-Object -ComObject 'Schedule.Service'
@@ -24,12 +25,14 @@ if ($Action -eq 'remove') {
 }
 $null = New-Item -ItemType Directory -Path $folder -Force
 $shell = New-Object -ComObject WScript.Shell
-$link = $shell.CreateShortcut((Join-Path $folder 'Voucher Reorder.lnk'))
+$shortcutPath = Join-Path $folder 'Voucher Reorder.lnk'
+$link = $shell.CreateShortcut($shortcutPath)
 $link.TargetPath = Join-Path $Candidate 'runtime\pythonw.exe'
 $link.Arguments = '"' + (Join-Path $Candidate 'app.py') + '" settings'
 $link.WorkingDirectory = $Candidate
 $link.IconLocation = (Join-Path $Candidate 'packaging\printer.ico') + ',0'
 $link.Save()
+[SettingsIdentity]::SetShortcutAppId($shortcutPath)
 $guide = $shell.CreateShortcut((Join-Path $folder 'User Guide.lnk'))
 $guide.TargetPath = Join-Path $Candidate 'USER_GUIDE.txt'
 $guide.Save()

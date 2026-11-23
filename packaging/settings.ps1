@@ -3,6 +3,7 @@ param([switch]$SmokeTest, [double]$SmokeScale=1, [switch]$SmokeSmall, [string]$S
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+Add-Type -Path (Join-Path $PSScriptRoot 'settings_identity.cs')
 Add-Type -TypeDefinition 'using System.Runtime.InteropServices; public static class SettingsDpi { [DllImport("user32.dll")] public static extern bool SetProcessDPIAware(); }'
 $null = [SettingsDpi]::SetProcessDPIAware()
 [System.Windows.Forms.Application]::EnableVisualStyles()
@@ -13,10 +14,6 @@ $store = Join-Path $env:LOCALAPPDATA 'VoucherReorder'
 $configPath = Join-Path $store 'settings.json'
 $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
 $statusFile = Join-Path $store 'mode-status.txt'
-if (-not $SmokeTest -and (Test-Path $statusFile)) {
-    $null = [Windows.Forms.MessageBox]::Show([IO.File]::ReadAllText($statusFile),'Voucher Reorder','OK','Information')
-    Remove-Item $statusFile
-}
 $form = New-Object Windows.Forms.Form
 $form.Text = 'Voucher Reorder'
 $form.AutoScaleDimensions = [Drawing.SizeF]::new(96,96)
@@ -26,6 +23,7 @@ $form.ClientSize = [Drawing.Size]::new(680, [Math]::Min(660, [Windows.Forms.Scre
 $form.StartPosition = 'CenterScreen'; $form.Font = New-Object Drawing.Font('Segoe UI', 10)
 $form.Icon = [Drawing.Icon]::new((Join-Path $root 'packaging\printer.ico'))
 $form.ShowInTaskbar = $true
+$form.Add_HandleCreated({ [SettingsIdentity]::SetWindowAppId($form.Handle) })
 function Fit-SettingsWindow {
     $area = [Windows.Forms.Screen]::FromControl($form).WorkingArea
     $form.Width = [Math]::Min($form.Width,$area.Width)
@@ -33,7 +31,14 @@ function Fit-SettingsWindow {
     $form.Left = [Math]::Max($area.Left,[Math]::Min($form.Left,$area.Right-$form.Width))
     $form.Top = [Math]::Max($area.Top,[Math]::Min($form.Top,$area.Bottom-$form.Height))
 }
-$form.Add_Shown({ Fit-SettingsWindow; $form.TopMost = $true; $form.Activate(); $form.BringToFront(); $form.TopMost = $false })
+$form.Add_Shown({
+    Fit-SettingsWindow; $form.TopMost = $true; $form.Activate(); $form.BringToFront(); $form.TopMost = $false
+    if (-not $SmokeTest -and (Test-Path -LiteralPath $statusFile)) {
+        $detail = [IO.File]::ReadAllText($statusFile)
+        Remove-Item -LiteralPath $statusFile
+        $null = [Windows.Forms.MessageBox]::Show($form,$detail,'Voucher Reorder','OK','Information')
+    }
+})
 $tabs = New-Object Windows.Forms.TabControl; $tabs.Dock = 'Fill'
 $printTab = New-Object Windows.Forms.TabPage; $printTab.Text = 'Print and setup'; $printTab.AutoScroll = $true
 $alignTab = New-Object Windows.Forms.TabPage; $alignTab.Text = 'Section order and alignment'; $alignTab.AutoScroll = $true
