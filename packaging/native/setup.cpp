@@ -2,10 +2,6 @@
 #include "secure.hpp"
 #include <winspool.h>
 #include <iostream>
-// Some MinGW SDK headers omit this spooler export; the Windows SDK declares it.
-#if defined(__MINGW32__)
-extern "C" BOOL WINAPI AddPortExW(LPWSTR, DWORD, LPBYTE, LPWSTR);
-#endif
 
 static const wchar_t* name = L"Voucher Reorder";
 static const wchar_t* monitor = L"Voucher Reorder Secure Port";
@@ -23,6 +19,31 @@ static std::wstring pdf_path(const std::wstring& sid) {
     DWORD length = ExpandEnvironmentStringsW(profile, expanded, 32768);
     vr::check(length && length < 32768);
     return std::wstring(expanded) + L"\\AppData\\Local\\VoucherReorder\\Incoming\\virtual.pdf";
+}
+static void add_local_port(const std::wstring& path) {
+    PRINTER_DEFAULTSW defaults{nullptr, nullptr, SERVER_ACCESS_ADMINISTER};
+    HANDLE raw = nullptr;
+    vr::check(OpenPrinterW(const_cast<LPWSTR>(L",XcvMonitor Local Port"), &raw, &defaults));
+    std::unique_ptr<void, decltype(&ClosePrinter)> xcv(raw, ClosePrinter);
+    DWORD needed = 0, status = ERROR_SUCCESS;
+    BYTE output[1]{};
+    vr::check(XcvDataW(raw, L"AddPort", reinterpret_cast<PBYTE>(const_cast<wchar_t*>(path.c_str())),
+        static_cast<DWORD>((path.size() + 1) * sizeof(wchar_t)), output, sizeof(output), &needed, &status));
+    vr::check(status == ERROR_SUCCESS || status == ERROR_ALREADY_EXISTS);
+    DWORD bytes = 0, count = 0;
+    EnumPortsW(nullptr, 2, nullptr, 0, &bytes, &count);
+    vr::check(bytes && bytes < 16 * 1024 * 1024 && GetLastError() == ERROR_INSUFFICIENT_BUFFER);
+    std::vector<BYTE> buffer(bytes);
+    vr::check(EnumPortsW(nullptr, 2, buffer.data(), bytes, &bytes, &count));
+    auto ports = reinterpret_cast<PORT_INFO_2W*>(buffer.data());
+    bool matched = false;
+    for (DWORD i = 0; i < count; ++i) {
+        if (!_wcsicmp(ports[i].pPortName, path.c_str())) {
+            vr::check(ports[i].pMonitorName && !_wcsicmp(ports[i].pMonitorName, L"Local Port"));
+            matched = true;
+        }
+    }
+    vr::check(matched);
 }
 static std::vector<BYTE> printer_info(HANDLE printer) {
     DWORD bytes = 0; GetPrinterW(printer, 2, nullptr, 0, &bytes);
@@ -130,9 +151,7 @@ int wmain(int argc, wchar_t** argv) {
         } else {
             selectedPort = pdf_path(sid);
             selectedDriver = L"Microsoft Print To PDF";
-            PORT_INFO_1W portInfo{const_cast<LPWSTR>(selectedPort.c_str())};
-            if (!AddPortExW(nullptr, 1, reinterpret_cast<LPBYTE>(&portInfo), const_cast<LPWSTR>(L"Local Port")))
-                vr::check(GetLastError() == ERROR_ALREADY_EXISTS);
+            add_local_port(selectedPort);
         }
         vr::Descriptor security(L"O:BAG:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;SWRC;;;" + sid + L")(A;OIIO;GA;;;" + sid + L")");
         PRINTER_INFO_2W info{};
