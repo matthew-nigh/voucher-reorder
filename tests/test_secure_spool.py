@@ -18,6 +18,13 @@ POSTSCRIPT = (
 )
 
 
+def test_virtual_variant_defaults_to_imagesetter_and_rejects_unknown_driver():
+    assert Settings().virtual_variant == "imagesetter"
+    assert Settings(virtual_variant="print_to_pdf").virtual_variant == "print_to_pdf"
+    with pytest.raises(ValueError, match="variant"):
+        Settings(virtual_variant="unknown")
+
+
 def arrival(folder, data=None):
     folder.mkdir(exist_ok=True)
     source = folder / f"{uuid.uuid4()}.ps"

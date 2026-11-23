@@ -151,6 +151,13 @@ it, and publishes `.ps` without replacement. Document titles and application
 output filenames never select the destination. Completed files grant the desktop
 user read/delete access; the privileged monitor never writes into the profile.
 
+Settings also offers **Print to PDF (UAC)** as a separate virtual printer choice.
+It uses the inbox v4 Microsoft Print to PDF driver on a standard Local Port at
+`%LOCALAPPDATA%\VoucherReorder\Incoming\virtual.pdf`. The watcher claims each
+closed PDF into a unique job folder and shows suspected loss or incomplete output
+in Job status. Keep the app running and reconcile warnings against submitted
+checks. Imagesetter remains the default virtual choice.
+
 The unprivileged broker copies each completed file into its durable queue before
 deleting the protected source. The UUID also identifies recovery after a crash or
 failed deletion, including across volumes. Independent filenames preserve online

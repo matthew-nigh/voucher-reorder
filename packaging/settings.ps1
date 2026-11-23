@@ -64,7 +64,7 @@ function Show-Error($text) { $null = [Windows.Forms.MessageBox]::Show([string]$t
 $modeLabel = Label '' 15 12 620 27
 function Refresh-Mode {
     $latest = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
-    $modeLabel.Text = if ($latest.mode -eq 'virtual') { 'Active mode: Virtual printer (print to Voucher Reorder)' } else { 'Active mode: PDF handoff (no administrator needed)' }
+    $modeLabel.Text = if ($latest.mode -eq 'virtual') { if ($latest.virtual_variant -eq 'print_to_pdf') { 'Active mode: Virtual printer (Microsoft Print to PDF)' } else { 'Active mode: Virtual printer (Imagesetter)' } } else { 'Active mode: PDF handoff (no administrator needed)' }
     if ($script:outputPositions) { Update-ModeLayout ($latest.mode -eq 'virtual') }
 }
 Refresh-Mode
@@ -74,7 +74,7 @@ function Start-ModeSetup($action) {
     try {
         Remove-Item -LiteralPath $statusFile -ErrorAction SilentlyContinue
         $modeLabel.Text = if ($action -eq 'virtual') { 'Setting up the Voucher Reorder printer...' } else { 'Switching to PDF handoff...' }
-        $enableVirtual.Enabled = $false; $switchPdf.Enabled = $false
+        $enableVirtual.Enabled = $false; $enablePdfPrinter.Enabled = $false; $switchPdf.Enabled = $false
         $setupProgress.Visible = $true
         # No -Wait: the launcher requests elevation of the protected native helper.
         if ($SmokeTest) {
@@ -83,13 +83,14 @@ function Start-ModeSetup($action) {
         }
         $script:setupProcess = Start-Process -FilePath $python -ArgumentList @(('"' + (Join-Path $root 'packaging\mode_setup.py') + '"'), $action, '--ui') -WindowStyle Hidden -PassThru
     } catch {
-        $enableVirtual.Enabled = $true; $switchPdf.Enabled = $true; $setupProgress.Visible = $false
+        $enableVirtual.Enabled = $true; $enablePdfPrinter.Enabled = $true; $switchPdf.Enabled = $true; $setupProgress.Visible = $false
         $modeLabel.Text = 'Printer setup could not start. PDF handoff remains available.'
         Show-Error $modeLabel.Text
     }
 }
-$enableVirtual = Button 'Enable virtual printer (UAC)' 15 43 300 { Start-ModeSetup 'virtual' }
-$switchPdf = Button 'Switch to PDF handoff' 335 43 300 { Start-ModeSetup 'pdf' }
+$enableVirtual = Button 'Imagesetter (UAC)' 15 43 195 { Start-ModeSetup 'virtual' }
+$enablePdfPrinter = Button 'Print to PDF (UAC)' 225 43 195 { Start-ModeSetup 'pdf-printer' }
+$switchPdf = Button 'PDF handoff' 435 43 200 { Start-ModeSetup 'pdf' }
 $setupProgress = New-Object Windows.Forms.ProgressBar
 $setupProgress.SetBounds(15,77,620,6); $setupProgress.Style = 'Marquee'; $setupProgress.Visible = $false
 $printTab.Controls.Add($setupProgress)
@@ -396,7 +397,7 @@ $timer.Add_Tick({
     if ($null -ne $script:setupProcess -and $script:setupProcess.HasExited) {
         $code = $script:setupProcess.ExitCode
         $script:setupProcess.Dispose(); $script:setupProcess = $null
-        $enableVirtual.Enabled = $true; $switchPdf.Enabled = $true; $setupProgress.Visible = $false
+        $enableVirtual.Enabled = $true; $enablePdfPrinter.Enabled = $true; $switchPdf.Enabled = $true; $setupProgress.Visible = $false
         Refresh-Mode
         $detail = if (Test-Path -LiteralPath $statusFile) { [IO.File]::ReadAllText($statusFile) } else { 'Printer setup failed or was interrupted. PDF handoff remains available; try setup again.' }
         Remove-Item -LiteralPath $statusFile -ErrorAction SilentlyContinue

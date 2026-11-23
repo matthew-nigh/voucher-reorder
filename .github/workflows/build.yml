@@ -121,6 +121,10 @@ jobs:
         shell: powershell
         timeout-minutes: 6
         run: scripts/test_provisioning.ps1 -Installer upgrade-baseline/dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.6-Setup.exe
+      - name: Exercise selectable Print to PDF Local Port burst
+        shell: powershell
+        timeout-minutes: 6
+        run: scripts/test_pdf_burst.ps1
       - name: Install and upgrade in a real standard-user account
         if: ${{ !cancelled() && steps.upgrade.outcome == 'success' }}
         shell: powershell

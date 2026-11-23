@@ -2,6 +2,10 @@
 #include "secure.hpp"
 #include <winspool.h>
 #include <iostream>
+// Some MinGW SDK headers omit this spooler export; the Windows SDK declares it.
+#if defined(__MINGW32__)
+extern "C" BOOL WINAPI AddPortExW(LPWSTR, DWORD, LPBYTE, LPWSTR);
+#endif
 
 static const wchar_t* name = L"Voucher Reorder";
 static const wchar_t* monitor = L"Voucher Reorder Secure Port";
@@ -9,6 +13,17 @@ static const wchar_t* monitor = L"Voucher Reorder Secure Port";
 // Microsoft Print To PDF driver rejects third-party monitors.
 static const wchar_t* driver = L"MS Publisher Imagesetter";
 static const wchar_t* key = L"SOFTWARE\\VoucherReorderPrinter";
+static std::wstring pdf_path(const std::wstring& sid) {
+    const auto profileKey = L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList\\" + sid;
+    wchar_t profile[32768]; DWORD bytes = sizeof(profile);
+    DWORD type = 0;
+    vr::check(RegGetValueW(HKEY_LOCAL_MACHINE, profileKey.c_str(), L"ProfileImagePath",
+        RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ, &type, profile, &bytes) == ERROR_SUCCESS);
+    wchar_t expanded[32768];
+    DWORD length = ExpandEnvironmentStringsW(profile, expanded, 32768);
+    vr::check(length && length < 32768);
+    return std::wstring(expanded) + L"\\AppData\\Local\\VoucherReorder\\Incoming\\virtual.pdf";
+}
 static std::vector<BYTE> printer_info(HANDLE printer) {
     DWORD bytes = 0; GetPrinterW(printer, 2, nullptr, 0, &bytes);
     vr::check(bytes && bytes < 16 * 1024 * 1024);
@@ -58,7 +73,7 @@ int wmain(int argc, wchar_t** argv) {
         // Only fixed install/remove verbs and a canonical account SID cross UAC.
         vr::check(argc == 3);
         std::wstring action(argv[1]), sid(argv[2]);
-        vr::check((action == L"install" || action == L"remove") && vr::account_sid(sid));
+        vr::check((action == L"install" || action == L"install-pdf" || action == L"remove") && vr::account_sid(sid));
         stage = 110;
         vr::LockedTree code(vr::program()); vr::protected_image();
         vr::LockedTree system(vr::system_directory());
@@ -96,21 +111,33 @@ int wmain(int argc, wchar_t** argv) {
             return 0;
         }
         stage = 150;
-        vr::LockedTree spool(vr::spool(), true, L"BU");
-        vr::LockedTree incoming(vr::spool() + L"\\" + sid, true, sid);
+        if (action == L"install") {
+            vr::LockedTree spool(vr::spool(), true, L"BU");
+            vr::LockedTree incoming(vr::spool() + L"\\" + sid, true, sid);
+        }
         HKEY registry = nullptr;
         vr::check(RegCreateKeyExW(HKEY_LOCAL_MACHINE, key, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &registry, nullptr) == ERROR_SUCCESS);
         status = RegSetValueExW(registry, L"OwnerSid", 0, REG_SZ, reinterpret_cast<const BYTE*>(sid.c_str()),
             static_cast<DWORD>((sid.size() + 1) * sizeof(wchar_t)));
         RegCloseKey(registry); vr::check(status == ERROR_SUCCESS);
         stage = 160;
-        MONITOR_INFO_2W monitorInfo{const_cast<LPWSTR>(monitor), const_cast<LPWSTR>(L"Windows x64"), const_cast<LPWSTR>(L"VoucherReorderPort.dll")};
-        if (!AddMonitorW(nullptr, 2, reinterpret_cast<LPBYTE>(&monitorInfo)))
-            vr::check(GetLastError() == ERROR_PRINT_MONITOR_ALREADY_INSTALLED);
+        std::wstring selectedPort = port;
+        const wchar_t* selectedDriver = driver;
+        if (action == L"install") {
+            MONITOR_INFO_2W monitorInfo{const_cast<LPWSTR>(monitor), const_cast<LPWSTR>(L"Windows x64"), const_cast<LPWSTR>(L"VoucherReorderPort.dll")};
+            if (!AddMonitorW(nullptr, 2, reinterpret_cast<LPBYTE>(&monitorInfo)))
+                vr::check(GetLastError() == ERROR_PRINT_MONITOR_ALREADY_INSTALLED);
+        } else {
+            selectedPort = pdf_path(sid);
+            selectedDriver = L"Microsoft Print To PDF";
+            PORT_INFO_1W portInfo{const_cast<LPWSTR>(selectedPort.c_str())};
+            if (!AddPortExW(nullptr, 1, reinterpret_cast<LPBYTE>(&portInfo), const_cast<LPWSTR>(L"Local Port")))
+                vr::check(GetLastError() == ERROR_ALREADY_EXISTS);
+        }
         vr::Descriptor security(L"O:BAG:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;SWRC;;;" + sid + L")(A;OIIO;GA;;;" + sid + L")");
         PRINTER_INFO_2W info{};
-        info.pPrinterName = const_cast<LPWSTR>(name); info.pPortName = const_cast<LPWSTR>(port.c_str());
-        info.pDriverName = const_cast<LPWSTR>(driver); info.pComment = const_cast<LPWSTR>(owner.c_str());
+        info.pPrinterName = const_cast<LPWSTR>(name); info.pPortName = const_cast<LPWSTR>(selectedPort.c_str());
+        info.pDriverName = const_cast<LPWSTR>(selectedDriver); info.pComment = const_cast<LPWSTR>(owner.c_str());
         info.pPrintProcessor = const_cast<LPWSTR>(L"winprint"); info.pDatatype = const_cast<LPWSTR>(L"RAW");
         info.pSecurityDescriptor = security.value; info.Attributes = PRINTER_ATTRIBUTE_LOCAL;
         stage = 170;

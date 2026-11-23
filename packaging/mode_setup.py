@@ -21,14 +21,21 @@ def main(action, ui=False):
         (root / "printer-setup-code.txt").unlink(missing_ok=True)
     remove = action in ("pdf", "remove")
     settings = load(config)
+    if action == "pdf-printer":
+        (root / "Incoming").mkdir(parents=True, exist_ok=True, mode=0o700)
     installed_marker = root / "virtual-installed"
     if remove and settings.mode == "pdf" and not installed_marker.exists():
         (root / "mode-status.txt").write_text("PDF handoff mode is ready.", encoding="utf-8")
         return 0
     try:
         stop_worker(root)
+        variant = "print_to_pdf" if action == "pdf-printer" else "imagesetter"
         result = subprocess.run(
-            powershell("request_printer.ps1", "-Action", "remove" if remove else "install"),
+            powershell(
+                "request_printer.ps1",
+                "-Action",
+                "remove" if remove else "install-pdf" if variant == "print_to_pdf" else "install",
+            ),
             timeout=300,
             check=False,
             creationflags=subprocess.CREATE_NO_WINDOW,
@@ -38,8 +45,12 @@ def main(action, ui=False):
         if not remove and result.returncode == 0:
             installed_marker.touch()
             (root / "secure-port-installed").touch()
-            save(config, replace(settings, mode="virtual"))
+            save(config, replace(settings, mode="virtual", virtual_variant=variant))
             detail = "Virtual printer mode is ready. Print to Voucher Reorder while signed in."
+            if variant == "print_to_pdf":
+                detail += (
+                    " Keep the app running; simultaneous PDF jobs can overlap. Check Job status for warnings."
+                )
         else:
             save(config, replace(settings, mode="pdf"))
             detail = (

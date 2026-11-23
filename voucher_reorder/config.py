@@ -16,6 +16,7 @@ class Settings:
     output_mode: str = "printer"
     output_folder: str = ""
     mode: str = "pdf"
+    virtual_variant: str = "imagesetter"
     watch_inbox: bool = True
     paper_kind: int = 1
     paper_width: float = 8.5
@@ -36,6 +37,8 @@ class Settings:
             self.pdf_folder()
         if self.mode not in ("pdf", "virtual") or type(self.watch_inbox) is not bool:
             raise ValueError("Invalid operating mode.")
+        if self.virtual_variant not in ("imagesetter", "print_to_pdf"):
+            raise ValueError("Invalid virtual printer variant.")
         if type(self.paper_kind) is not int or not 1 <= self.paper_kind <= 65535:
             raise ValueError("Select a paper size supported by your printer.")
         if type(self.tray) is not int or not 0 <= self.tray <= 65535:

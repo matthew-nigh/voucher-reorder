@@ -1,8 +1,30 @@
 # Security review — current branch, 2026-11-23
 
-## Microsoft Print to PDF Local Port investigation
+## Selectable Microsoft Print to PDF Local Port variant
 
-The optional virtual queue stays on **MS Publisher Imagesetter and the protected
+Settings now offers a separate **Print to PDF (UAC)** virtual printer choice.
+Imagesetter and its unique-job monitor remain the default virtual build. The PDF
+choice uses the protected CR-01 helper to install the inbox v4 driver on a
+standard Local Port at the user's fixed `Incoming/virtual.pdf`. The driver writes
+as the submitting user; the 9478651 probe found no junction-based privileged
+write. The watcher moves each closed, complete PDF into a unique durable job
+folder. An open or partial file stays in place and raises a persistent warning.
+A file present at startup is collected with an uncertainty warning. The watcher
+also compares spooler jobs it observed with files collected and persists a
+warning when fewer files remain after the queue drains. The Windows burst test
+prints `PDF BURST:` results for concurrent and rapid jobs.
+
+**Residual risk:** the standard Local Port has one filename and no atomic
+one-job dispatch gate. Simultaneous jobs can overlap, and jobs printed while
+the app is stopped can overwrite one another. A spooler job can also appear and
+disappear between watcher observations, so the observed-job count is a warning
+signal, not a proof that every check was retained. CI runners may be faster than
+a typical PC. Reconcile every warning against the source checks and reprint
+missing jobs; use the Imagesetter option when job preservation is required.
+
+## Earlier Microsoft Print to PDF Local Port investigation
+
+The default virtual queue stays on **MS Publisher Imagesetter and the protected
 unique-job monitor**. The inbox v4 Microsoft Print to PDF driver rejects that
 monitor (`AddPrinterW`, stage 170, Windows error 1801 in the earlier CI prototype).
 Microsoft [documents that v4 drivers do not support non-Microsoft port
@@ -32,7 +54,8 @@ and redirecting the port directory through a junction into an administrator-only
 folder did not create a file in the protected target. On that tested configuration,
 the write uses the user's security context, so the junction cannot turn it into
 a privileged write. The probe is diagnostic and leaves the installed queue alone.
-It does not resolve the CR-04 scheduling race, so the v4 path is not shipped.
+It does not resolve the CR-04 scheduling race; the selectable v4 path remains
+subject to the residual risk above.
 
 ## Follow-up implementation status
 

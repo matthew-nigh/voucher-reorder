@@ -21,7 +21,7 @@ class Guard:
     def __init__(self, root):
         self.root = root
 
-    def snapshot(self):
+    def snapshot(self, variant="imagesetter"):
         from .spool_metadata import JobInfo, PrinterInfo, _checked, _owner_sid
 
         api = c.WinDLL("winspool.drv", use_last_error=True)
@@ -54,11 +54,19 @@ class Guard:
 
             metadata = buffer(lambda p, n, s: api.GetPrinterW(handle, 2, p, n, s))
             printer = c.cast(metadata, c.POINTER(PrinterInfo)).contents
+            expected_driver = (
+                "Microsoft Print To PDF" if variant == "print_to_pdf" else "MS Publisher Imagesetter"
+            )
+            expected_port = (
+                str(self.root / "Incoming" / "virtual.pdf")
+                if variant == "print_to_pdf"
+                else f"VoucherReorder:{_owner_sid()}"
+            )
             if (
                 printer.comment != f"VoucherReorder owner={_owner_sid()}"
-                or printer.driver != "MS Publisher Imagesetter"
+                or printer.driver != expected_driver
                 or printer.attributes & (0x8 | 0x100)  # shared / keep printed jobs
-                or printer.port != f"VoucherReorder:{_owner_sid()}"
+                or printer.port.casefold() != expected_port.casefold()
             ):
                 raise ValueError("Reconfigure the old or foreign virtual printer in Settings")
             count = w.DWORD()
@@ -84,8 +92,11 @@ class Guard:
         finally:
             api.ClosePrinter(handle)
 
-    def changed(self):
-        self.snapshot()
+    def changed(self, variant="imagesetter"):
+        if variant == "imagesetter":
+            self.snapshot()
+            return None
+        return self.snapshot(variant)
 
     def close(self):
         pass

@@ -1,4 +1,4 @@
-param([ValidateSet('install','remove')][string]$Action)
+param([ValidateSet('install','install-pdf','remove')][string]$Action)
 $ErrorActionPreference = 'Stop'
 try {
     $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
