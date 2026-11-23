@@ -110,7 +110,11 @@ struct LockedTree {
                     check(CreateDirectoryW(part.c_str(), &sa) || GetLastError() == ERROR_ALREADY_EXISTS,
                         "create protected directory");
                 }
-                auto h = std::make_unique<Handle>(CreateFileW(part.c_str(), READ_CONTROL | FILE_READ_ATTRIBUTES,
+                // A metadata-only directory handle does not participate in the
+                // share check for rename. List access plus no FILE_SHARE_DELETE
+                // keeps each verified component from moving during the job.
+                auto h = std::make_unique<Handle>(CreateFileW(part.c_str(),
+                    READ_CONTROL | FILE_READ_ATTRIBUTES | FILE_LIST_DIRECTORY,
                     FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
                     FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
                 check(h->value != INVALID_HANDLE_VALUE, "open directory component");

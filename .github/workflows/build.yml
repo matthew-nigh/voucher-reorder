@@ -40,7 +40,13 @@ jobs:
       - name: Run portable suite on Windows
         run: python -m pytest -q
       - name: Install packaging tools
-        run: choco install nsis --version=3.11 -y --no-progress
+        run: |
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            choco install nsis --version=3.11 -y --no-progress
+            if ($LASTEXITCODE -eq 0) { break }
+            if ($attempt -eq 3) { exit $LASTEXITCODE }
+            Start-Sleep -Seconds (10 * $attempt)
+          }
       - name: Load x64 Visual Studio compiler environment
         shell: pwsh
         run: |
