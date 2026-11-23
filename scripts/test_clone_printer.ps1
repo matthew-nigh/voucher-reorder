@@ -66,7 +66,10 @@ try {
     & $python $app register
     if ($LASTEXITCODE) { throw 'Could not restart watcher' }
     Wait-Sent 3
-    & $python -c "from pypdf import PdfReader; from voucher_reorder.config import data_dir; r=data_dir(); pdfs=[PdfReader(p) for p in (r/'CI-output').glob('*.pdf')]; assert sorted(len(p.pages) for p in pdfs)==[1,10,10]; assert sorted((len(p.pages), ' '.join(p.pages[0].extract_text().split())) for p in pdfs)==[(1,'VOID FAKE FAKE no-dialog file PAGE 1'),(10,'VOID FAKE FAKE burst A PAGE 1'),(10,'VOID FAKE FAKE burst B PAGE 1')]; assert all('PAGE 10' in ' '.join(p.pages[-1].extract_text().split()) for p in pdfs if len(p.pages)==10); assert not list((r/'jobs').glob('*/input.ps')); assert not list((r/'jobs').glob('*/input.pdf')); from voucher_reorder.spool import incoming_folder; assert not list(incoming_folder().glob('*.ps')); assert not list(incoming_folder().glob('*.pdf'))"
+    $verifyPython=(Get-Command python).Source
+    & $verifyPython (Join-Path $PSScriptRoot 'verify_clone_output.py') (Join-Path $data 'CI-output')
+    if ($LASTEXITCODE) { throw 'Burst PDFs have missing, blank, or duplicate rendered pages' }
+    & $python -c "from voucher_reorder.config import data_dir; from voucher_reorder.spool import incoming_folder; r=data_dir(); assert not list((r/'jobs').glob('*/input.ps')); assert not list((r/'jobs').glob('*/input.pdf')); assert not list(incoming_folder().glob('*.ps')); assert not list(incoming_folder().glob('*.pdf'))"
     if ($LASTEXITCODE) { throw 'Missing pages, overwritten input, or payload not deleted' }
     if (Test-Path (Join-Path $data 'printer-warning.json')) { throw (Get-Content (Join-Path $data 'printer-warning.json') -Raw) }
     Write-Output 'PASS: MS Publisher Imagesetter protected port, no output filename/dialog, distinct complete offline burst jobs (1/10/10 pages), delete after success'

@@ -66,7 +66,9 @@ The v3 MS Publisher Imagesetter driver produces the PostScript; the bounded
 Ghostscript worker converts it to PDF under the desktop user's account.
 The Windows acceptance script verifies distinct complete files for two jobs
 submitted back to back while the watcher is stopped, then checks their rendered
-PDF page counts and text after pickup. This tests the retained unique-job path;
+PDF page counts, nonblank pages, and distinct first and final page images after
+pickup. GDI/PostScript glyph outlines may not be extractable as PDF text. This
+tests the retained unique-job path;
 it does not qualify the unsafe fixed-file PDF Local Port path.
 The monitor only publishes a flushed `.ps` after a successful job; failed or
 interrupted writes remain `.partial` and are never admitted by the watcher.
