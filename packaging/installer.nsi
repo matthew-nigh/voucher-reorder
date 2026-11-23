@@ -77,7 +77,7 @@ Section "Install or upgrade"
     Abort "Update was not activated. The previous installation and settings were retained."
   ${EndIf}
 SectionEnd
-Section /o "Virtual printer (one administrator prompt)" VirtualPrinter
+Section /o "Virtual printer (Recommended) - one administrator prompt" VirtualPrinter
   nsExec::ExecToStack '"$Candidate\runtime\python.exe" "$Candidate\packaging\mode_setup.py" setup'
   Pop $0
   Pop $1

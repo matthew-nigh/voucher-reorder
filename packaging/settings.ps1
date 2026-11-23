@@ -32,7 +32,7 @@ function Fit-SettingsWindow {
     $form.Top = [Math]::Max($area.Top,[Math]::Min($form.Top,$area.Bottom-$form.Height))
 }
 $form.Add_Shown({
-    Fit-SettingsWindow; $form.TopMost = $true; $form.Activate(); $form.BringToFront(); $form.TopMost = $false
+    Size-SettingsWindow; Fit-SettingsWindow; $form.TopMost = $true; $form.Activate(); $form.BringToFront(); $form.TopMost = $false
     if (-not $SmokeTest -and (Test-Path -LiteralPath $statusFile)) {
         $detail = [IO.File]::ReadAllText($statusFile)
         Remove-Item -LiteralPath $statusFile
@@ -65,6 +65,7 @@ $modeLabel = Label '' 15 12 620 27
 function Refresh-Mode {
     $latest = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
     $modeLabel.Text = if ($latest.mode -eq 'virtual') { 'Active mode: Virtual printer (print to Voucher Reorder)' } else { 'Active mode: PDF handoff (no administrator needed)' }
+    if ($script:outputPositions) { Update-ModeLayout ($latest.mode -eq 'virtual') }
 }
 Refresh-Mode
 $script:setupProcess = $null
@@ -92,13 +93,13 @@ $switchPdf = Button 'Switch to PDF handoff' 335 43 300 { Start-ModeSetup 'pdf' }
 $setupProgress = New-Object Windows.Forms.ProgressBar
 $setupProgress.SetBounds(15,77,620,6); $setupProgress.Style = 'Marquee'; $setupProgress.Visible = $false
 $printTab.Controls.Add($setupProgress)
-$null = Label 'PDF handoff: print from QuickBooks to Microsoft Print to PDF (if available), then save a new PDF in this Inbox. Or use Print a PDF below. Originals stay until you delete them.' 15 85 620 55
-$inbox = Edit (Join-Path $store 'Inbox') 15 145 620; $inbox.ReadOnly = $true
-$null = Button 'Open Inbox' 15 180 140 { Start-Process explorer.exe -ArgumentList ('"' + $inbox.Text + '"') }
-$null = Button 'Copy Inbox path' 165 180 180 { [Windows.Forms.Clipboard]::SetText($inbox.Text) }
+$handoff = Label 'PDF handoff: print from QuickBooks to Microsoft Print to PDF (if available), then save a new PDF in this Inbox. Or use Print a PDF below. Originals stay until you delete them.' 15 85 620 80
+$inbox = Edit (Join-Path $store 'Inbox') 15 170 620; $inbox.ReadOnly = $true
+$openInbox = Button 'Open Inbox' 15 205 140 { Start-Process explorer.exe -ArgumentList ('"' + $inbox.Text + '"') }
+$copyInbox = Button 'Copy Inbox path' 165 205 180 { [Windows.Forms.Clipboard]::SetText($inbox.Text) }
 $watch = New-Object Windows.Forms.CheckBox
 $watch.Text = 'Automatically reorder PDFs saved to the Inbox'
-$watch.Checked = $config.watch_inbox; $watch.SetBounds(15,218,620,30); $printTab.Controls.Add($watch)
+$watch.Checked = $config.watch_inbox; $watch.SetBounds(15,243,620,30); $printTab.Controls.Add($watch)
 $null = Label 'Output: printer or reordered PDF file' 15 258
 $printers = Combo 15 285 620
 $null = Label 'Paper size' 15 325 300
@@ -174,7 +175,7 @@ $browseOutput = Button 'Browse...' 510 478 125 {
     try { if ($dialog.ShowDialog() -eq 'OK') { $outputFolder.Text = $dialog.SelectedPath } } finally { $dialog.Dispose() }
 }
 Refresh-Printers
-$null = Button 'Refresh printers' 355 180 280 { Refresh-Printers }
+$refreshPrinters = Button 'Refresh printers' 355 205 280 { Refresh-Printers }
 $notice = Label 'Start with plain paper. Confirm section order on the Alignment tab.' 15 525 620 60
 
 # Layout owns every row: no absolutely positioned preview can overlap a selector.
@@ -361,6 +362,22 @@ $null = Button 'Resume held jobs' 180 645 220 {
 $null = Button 'Cancel waiting jobs' 415 645 220 {
     if ([Windows.Forms.MessageBox]::Show('Cancel waiting/held app jobs? Jobs already sent must be canceled in the real Windows printer queue. Check paper before reprinting.','Cancel jobs','YesNo') -eq 'Yes') { & $python $app discard }
 }
+function Update-ModeLayout($virtual) {
+    foreach ($control in @($handoff,$inbox,$openInbox,$copyInbox,$watch)) { $control.Visible = -not $virtual }
+    foreach ($position in $script:outputPositions) {
+        $position.Control.Top = $position.Top + $(if ($virtual) { -148 } else { 25 })
+    }
+    $refreshPrinters.Top = if ($virtual) { 110 } else { 205 }
+}
+function Size-SettingsWindow {
+    $layout.PerformLayout()
+    $alignHeight = $layout.GetPreferredSize([Drawing.Size]::new($alignTab.ClientSize.Width,0)).Height + 24
+    $printHeight = ($printTab.Controls | Where-Object Visible | Measure-Object -Property Bottom -Maximum).Maximum + 24
+    $tabChrome = $tabs.Height - $tabs.DisplayRectangle.Height
+    $form.ClientSize = [Drawing.Size]::new($form.ClientSize.Width, [int]([Math]::Max($alignHeight,$printHeight) + $tabChrome))
+}
+$script:outputPositions = @($printTab.Controls | Where-Object { $_.Top -ge 258 } | ForEach-Object { @{ Control=$_; Top=$_.Top } })
+Refresh-Mode
 $timer=New-Object Windows.Forms.Timer; $timer.Interval=500
 $timer.Add_Tick({
     if ($script:alignmentJob) {
@@ -394,9 +411,12 @@ if ($SmokeTest) {
             $form.Scale([Drawing.SizeF]::new($SmokeScale,$SmokeScale))
             $form.Font = [Drawing.Font]::new('Segoe UI', [single](10*$SmokeScale))
         }
-        if ($SmokeSmall) { $form.ClientSize = [Drawing.Size]::new(420,320) }
+        if ($SmokeSmall) { $form.ClientSize = [Drawing.Size]::new(420,320) } else { Size-SettingsWindow }
         Fit-SettingsWindow
         [Windows.Forms.Application]::DoEvents()
+        if ($SmokeScale -eq 1 -and -not $SmokeSmall -and $form.Height -lt [Windows.Forms.Screen]::FromControl($form).WorkingArea.Height) {
+            if ($alignTab.VerticalScroll.Visible) { throw 'Alignment tab scrolls at the normal window size' }
+        }
         for ($a=0; $a -lt 6; $a++) {
             for ($b=0; $b -lt 6; $b++) {
                 $sourceOrder.SelectedIndex=$a; $order.SelectedIndex=$b
@@ -428,6 +448,11 @@ if ($SmokeTest) {
         $alignTab.ScrollControlIntoView($saveAlignment); [Windows.Forms.Application]::DoEvents()
         if (-not $saveAlignment.Visible) { throw 'Cannot reach alignment save button' }
         $tabs.SelectedTab=$printTab
+        if ($SmokeScale -eq 1 -and -not $SmokeSmall -and $form.Height -lt [Windows.Forms.Screen]::FromControl($form).WorkingArea.Height) {
+            if ($printTab.VerticalScroll.Visible) { throw 'Print tab scrolls at the normal window size' }
+        }
+        $handoffSize = [Windows.Forms.TextRenderer]::MeasureText($handoff.Text,$handoff.Font,[Drawing.Size]::new($handoff.Width,1000),[Windows.Forms.TextFormatFlags]::WordBreak)
+        if ($handoffSize.Height -gt $handoff.Height) { throw 'PDF handoff instruction is clipped' }
         $printers.SelectedItem=$pdfChoice
         if ($paper.Items.Count -lt 3 -or -not $outputFolder.Visible -or -not $outputLabel.Visible -or -not $browseOutput.Visible) { throw 'Printer-free PDF settings unavailable' }
         $outputFolder.Text=Join-Path $store 'Reordered'
@@ -436,6 +461,15 @@ if ($SmokeTest) {
         $saved=Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
         if ($saved.output_mode -ne 'pdf' -or ($saved.source_order -join ',') -ne '2,1,0') { throw 'PDF output or source order was not saved' }
         if ($null -ne $saved.quickbooks_version -or $null -ne $saved.printer_model) { throw 'Obsolete fields remain' }
+        $saved.mode='virtual'; $saved | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $configPath -Encoding UTF8
+        Refresh-Mode
+        if ($handoff.Visible -or $inbox.Visible -or $openInbox.Visible -or $copyInbox.Visible -or $watch.Visible) { throw 'Inbox controls visible in virtual mode' }
+        if (-not $refreshPrinters.Visible -or $refreshPrinters.Top -ge $paper.Top) { throw 'Refresh printers is misplaced in virtual mode' }
+        Refresh-Printers
+        if ($printers.Items.Count -lt 1) { throw 'Refresh printers failed in virtual mode' }
+        $saved.mode='pdf'; $saved | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $configPath -Encoding UTF8
+        Refresh-Mode
+        if (-not $handoff.Visible -or -not $inbox.Visible -or -not $openInbox.Visible -or -not $copyInbox.Visible -or -not $watch.Visible -or -not $refreshPrinters.Visible) { throw 'Inbox or refresh controls missing in PDF mode' }
         $config.printer='Microsoft Print to PDF'; $config.output_mode='printer'; $printers.SelectedItem=$null; Refresh-Printers
         if ($printers.SelectedItem -ne $pdfChoice) { throw 'Legacy PDF printer was not mapped to PDF output' }
         $null=$printers.Items.Add('FAKE OFFICE PRINTER'); $printers.SelectedItem='FAKE OFFICE PRINTER'
