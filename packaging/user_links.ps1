@@ -28,6 +28,7 @@ $link = $shell.CreateShortcut((Join-Path $folder 'Voucher Reorder.lnk'))
 $link.TargetPath = Join-Path $Candidate 'runtime\pythonw.exe'
 $link.Arguments = '"' + (Join-Path $Candidate 'app.py') + '" settings'
 $link.WorkingDirectory = $Candidate
+$link.IconLocation = (Join-Path $Candidate 'packaging\printer.ico') + ',0'
 $link.Save()
 $guide = $shell.CreateShortcut((Join-Path $folder 'User Guide.lnk'))
 $guide.TargetPath = Join-Path $Candidate 'USER_GUIDE.txt'

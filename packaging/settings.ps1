@@ -24,6 +24,8 @@ $form.AutoScaleMode = 'Dpi'
 $form.MinimumSize = [Drawing.Size]::new(360,300)
 $form.ClientSize = [Drawing.Size]::new(680, [Math]::Min(660, [Windows.Forms.Screen]::PrimaryScreen.WorkingArea.Height - 80))
 $form.StartPosition = 'CenterScreen'; $form.Font = New-Object Drawing.Font('Segoe UI', 10)
+$form.Icon = [Drawing.Icon]::new((Join-Path $root 'packaging\printer.ico'))
+$form.ShowInTaskbar = $true
 function Fit-SettingsWindow {
     $area = [Windows.Forms.Screen]::FromControl($form).WorkingArea
     $form.Width = [Math]::Min($form.Width,$area.Width)
@@ -31,7 +33,7 @@ function Fit-SettingsWindow {
     $form.Left = [Math]::Max($area.Left,[Math]::Min($form.Left,$area.Right-$form.Width))
     $form.Top = [Math]::Max($area.Top,[Math]::Min($form.Top,$area.Bottom-$form.Height))
 }
-$form.Add_Shown({ Fit-SettingsWindow })
+$form.Add_Shown({ Fit-SettingsWindow; $form.TopMost = $true; $form.Activate(); $form.BringToFront(); $form.TopMost = $false })
 $tabs = New-Object Windows.Forms.TabControl; $tabs.Dock = 'Fill'
 $printTab = New-Object Windows.Forms.TabPage; $printTab.Text = 'Print and setup'; $printTab.AutoScroll = $true
 $alignTab = New-Object Windows.Forms.TabPage; $alignTab.Text = 'Section order and alignment'; $alignTab.AutoScroll = $true
@@ -89,21 +91,25 @@ $null = Label 'PDF handoff: print from QuickBooks to Microsoft Print to PDF (if 
 $inbox = Edit (Join-Path $store 'Inbox') 15 145 620; $inbox.ReadOnly = $true
 $null = Button 'Open Inbox' 15 180 140 { Start-Process explorer.exe -ArgumentList ('"' + $inbox.Text + '"') }
 $null = Button 'Copy Inbox path' 165 180 180 { [Windows.Forms.Clipboard]::SetText($inbox.Text) }
-$null = Label 'Output: printer or reordered PDF file' 15 225
-$printers = Combo 15 255 620
-$null = Label 'Paper size' 15 295 300
-$null = Label 'Paper tray' 345 295 290
-$paper = Combo 15 325 320; $tray = Combo 345 325 290
-$paperInfo = Label '' 15 365 620 55
-$pdfChoice = 'Save reordered PDF (test, no physical printer)'
-function Is-PdfOutput { return ($printers.SelectedItem -eq $pdfChoice -or [string]$printers.SelectedItem -match '(?i)PDF|XPS.*Writer') }
+$watch = New-Object Windows.Forms.CheckBox
+$watch.Text = 'Automatically reorder PDFs saved to the Inbox'
+$watch.Checked = $config.watch_inbox; $watch.SetBounds(15,218,620,30); $printTab.Controls.Add($watch)
+$null = Label 'Output: printer or reordered PDF file' 15 258
+$printers = Combo 15 285 620
+$null = Label 'Paper size' 15 325 300
+$null = Label 'Paper tray' 345 325 290
+$paper = Combo 15 350 320; $tray = Combo 345 350 290
+$paperInfo = Label '' 15 390 620 55
+$pdfChoice = 'Save reordered PDF'
+function Is-PdfOutput { return ($printers.SelectedItem -eq $pdfChoice) }
+function Is-ExcludedPrinter($name) { return ([string]$name -match '(?i)PDF|XPS' -or ([string]$name).Trim() -eq 'Voucher Reorder') }
 $script:papers = @(); $script:trays = @()
 $refreshPaper = {
     try {
         $paper.Items.Clear(); $tray.Items.Clear(); $script:papers = @(); $script:trays = @()
         if ($null -eq $printers.SelectedItem) { return }
         $pdfOutput = Is-PdfOutput
-        $outputFolder.Enabled = $pdfOutput; $browseOutput.Enabled = $pdfOutput
+        $outputLabel.Visible = $pdfOutput; $outputFolder.Visible = $pdfOutput; $browseOutput.Visible = $pdfOutput
         if ($pdfOutput) {
             $script:papers = @(
                 [Drawing.Printing.PaperSize]::new('Letter',850,1100),
@@ -135,7 +141,7 @@ $showMargins = {
     try {
         if ($paper.SelectedIndex -lt 0) { return }
         if (Is-PdfOutput) {
-            $paperInfo.Text = 'Saves vector PDFs directly, at actual size, without a printer driver. Choose an output folder below (outside the Inbox). PDF/XPS printer choices use this same file output.'
+            $paperInfo.Text = 'Saves vector PDFs at actual size without a printer driver. Choose an output folder below, outside the Inbox.'
             return
         }
         $p = New-Object Drawing.Printing.PrinterSettings; $p.PrinterName = [string]$printers.SelectedItem
@@ -150,24 +156,21 @@ function Refresh-Printers {
     $selected = $printers.SelectedItem
     $printers.Items.Clear()
     $null = $printers.Items.Add($pdfChoice)
-    [Drawing.Printing.PrinterSettings]::InstalledPrinters | Sort-Object | ForEach-Object { $null = $printers.Items.Add($_) }
-    $printers.SelectedItem = if ($selected) { $selected } elseif ($config.output_mode -eq 'pdf') { $pdfChoice } else { $config.printer }
+    [Drawing.Printing.PrinterSettings]::InstalledPrinters | Sort-Object | Where-Object { -not (Is-ExcludedPrinter $_) } | ForEach-Object { $null = $printers.Items.Add($_) }
+    $choice = if ($selected) { $selected } elseif ($config.output_mode -eq 'pdf' -or (Is-ExcludedPrinter $config.printer)) { $pdfChoice } else { $config.printer }
+    $printers.SelectedItem = if ($printers.Items.Contains($choice)) { $choice } else { $pdfChoice }
 }
-$null = Label 'Folder for reordered PDFs' 15 418 620 25
-$outputFolder = Edit $config.output_folder 15 447 485
-$browseOutput = Button 'Browse...' 510 445 125 {
+$outputLabel = Label 'Folder for reordered PDFs' 15 452 620 25
+$outputFolder = Edit $config.output_folder 15 480 485
+$browseOutput = Button 'Browse...' 510 478 125 {
     $dialog = New-Object Windows.Forms.FolderBrowserDialog
     $dialog.Description = 'Choose a folder for reordered PDFs, outside the Inbox'
     $dialog.SelectedPath = $outputFolder.Text
     try { if ($dialog.ShowDialog() -eq 'OK') { $outputFolder.Text = $dialog.SelectedPath } } finally { $dialog.Dispose() }
 }
-$outputFolder.Enabled = $false; $browseOutput.Enabled = $false
 Refresh-Printers
 $null = Button 'Refresh printers' 355 180 280 { Refresh-Printers }
-$watch = New-Object Windows.Forms.CheckBox
-$watch.Text = 'Automatically process completed PDFs saved in this Inbox'
-$watch.Checked = $config.watch_inbox; $watch.SetBounds(15,490,620,30); $printTab.Controls.Add($watch)
-$notice = Label 'Start with plain paper. Confirm section order on the Alignment tab.' 15 527 620 60
+$notice = Label 'Start with plain paper. Confirm section order on the Alignment tab.' 15 525 620 60
 
 # Layout owns every row: no absolutely positioned preview can overlap a selector.
 $layout = New-Object Windows.Forms.TableLayoutPanel
@@ -273,7 +276,13 @@ $saveAlignment.Add_Click({ try { Save-Settings } catch { Show-Error $_.Exception
 $script:container=$printTab
 $null = Button 'Save settings' 15 600 150 { try { Save-Settings } catch { Show-Error $_.Exception.Message } }
 $null = Button 'Print alignment test' 180 600 220 {
-    try { Save-Settings; $text=(& $python $app alignment | Out-String); if ($LASTEXITCODE -ne 0) { throw 'Could not queue the alignment page.' }; $notice.Text=$text } catch { Show-Error $_.Exception.Message }
+    try {
+        Save-Settings
+        $text=(& $python $app alignment | Out-String)
+        if ($LASTEXITCODE -ne 0) { throw 'Could not queue the alignment page.' }
+        $notice.Text=$text
+        if ((Is-PdfOutput) -and $text -match 'Alignment job: ([a-zA-Z0-9-]+)') { $script:alignmentJob=$Matches[1] }
+    } catch { Show-Error $_.Exception.Message }
 }
 $null = Button 'Print a PDF...' 415 600 220 {
     try {
@@ -288,7 +297,7 @@ $null = Button 'Print a PDF...' 415 600 220 {
 }
 $null = Button 'Job status' 15 645 150 {
     $dialog=New-Object Windows.Forms.Form
-    $dialog.Text='Job status'; $dialog.Size=New-Object Drawing.Size(780,510)
+    $dialog.Text='Job status'; $dialog.Size=New-Object Drawing.Size(780,550)
     $dialog.StartPosition='CenterParent'
     $summary=New-Object Windows.Forms.TextBox
     $summary.Multiline=$true; $summary.ReadOnly=$true; $summary.ScrollBars='Vertical'
@@ -323,6 +332,21 @@ $null = Button 'Job status' 15 645 150 {
     }); $dialog.Controls.Add($retry)
     $pickup=New-Object Windows.Forms.Button; $pickup.Text='Retry pickup'; $pickup.SetBounds(325,410,140,30)
     $pickup.Add_Click({ & $python $app register }); $dialog.Controls.Add($pickup)
+    $dismiss=New-Object Windows.Forms.Button; $dismiss.Text='Dismiss'; $dismiss.SetBounds(480,410,140,30)
+    $dismiss.Add_Click({
+        if ($null -eq $list.SelectedItem) { return }
+        $selected=$list.SelectedItem
+        & $python $app dismiss --file $selected.Id
+        if ($LASTEXITCODE -eq 0) { $list.Items.Remove($selected) } else { Show-Error 'Could not dismiss this job.' }
+        $summary.Text=(& $python $app status | Out-String)
+    }); $dialog.Controls.Add($dismiss)
+    $clear=New-Object Windows.Forms.Button; $clear.Text='Clear finished'; $clear.SetBounds(15,450,140,30)
+    $clear.Add_Click({
+        if ([Windows.Forms.MessageBox]::Show('Remove finished jobs from Job status now? Saved reordered PDFs remain in their output folder.','Clear finished','YesNo','Question') -ne 'Yes') { return }
+        & $python $app clear-finished
+        if ($LASTEXITCODE -ne 0) { Show-Error 'Could not clear finished jobs.' }
+        $summary.Text=(& $python $app status | Out-String)
+    }); $dialog.Controls.Add($clear)
     $null=$dialog.ShowDialog($form)
     $dialog.Dispose()
 }
@@ -334,6 +358,17 @@ $null = Button 'Cancel waiting jobs' 415 645 220 {
 }
 $timer=New-Object Windows.Forms.Timer; $timer.Interval=500
 $timer.Add_Tick({
+    if ($script:alignmentJob) {
+        $statePath=Join-Path $store ("jobs\$($script:alignmentJob)\state.json")
+        if (Test-Path -LiteralPath $statePath) {
+            $job=Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
+            if ($job.state -eq 'sent' -and $job.message -like 'Saved reordered PDF: *') {
+                $savedPath=$job.message.Substring('Saved reordered PDF: '.Length)
+                $script:alignmentJob=$null
+                if (Test-Path -LiteralPath $savedPath) { Start-Process explorer.exe -ArgumentList ('/select,"'+$savedPath+'"') }
+            } elseif ($job.state -in @('failed','review')) { $script:alignmentJob=$null }
+        }
+    }
     if ($null -ne $script:setupProcess -and $script:setupProcess.HasExited) {
         $code = $script:setupProcess.ExitCode
         $script:setupProcess.Dispose(); $script:setupProcess = $null
@@ -387,18 +422,20 @@ if ($SmokeTest) {
         # Small windows must scroll to the final settings action without losing bands.
         $alignTab.ScrollControlIntoView($saveAlignment); [Windows.Forms.Application]::DoEvents()
         if (-not $saveAlignment.Visible) { throw 'Cannot reach alignment save button' }
-        $printers.SelectedItem=$pdfChoice
-        if ($paper.Items.Count -lt 3 -or -not $outputFolder.Enabled) { throw 'Printer-free PDF settings unavailable' }
-        $outputFolder.Text=Join-Path $store 'Reordered'
-        foreach ($choice in @($pdfChoice,'Microsoft Print to PDF','Microsoft XPS Document Writer')) {
-            if (-not $printers.Items.Contains($choice)) { $null=$printers.Items.Add($choice) }
-            $printers.SelectedItem=$choice
-            Save-Settings
-            $saved=Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
-            if ($saved.output_mode -ne 'pdf' -or ($saved.source_order -join ',') -ne '2,1,0') { throw 'PDF output or source order was not saved' }
-            if ($null -ne $saved.quickbooks_version -or $null -ne $saved.printer_model) { throw 'Obsolete fields remain' }
-        }
         $tabs.SelectedTab=$printTab
+        $printers.SelectedItem=$pdfChoice
+        if ($paper.Items.Count -lt 3 -or -not $outputFolder.Visible -or -not $outputLabel.Visible -or -not $browseOutput.Visible) { throw 'Printer-free PDF settings unavailable' }
+        $outputFolder.Text=Join-Path $store 'Reordered'
+        foreach ($choice in @('Microsoft Print to PDF','Microsoft XPS Document Writer','Voucher Reorder')) { if ($printers.Items.Contains($choice)) { throw 'Excluded printer is visible' } }
+        Save-Settings
+        $saved=Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+        if ($saved.output_mode -ne 'pdf' -or ($saved.source_order -join ',') -ne '2,1,0') { throw 'PDF output or source order was not saved' }
+        if ($null -ne $saved.quickbooks_version -or $null -ne $saved.printer_model) { throw 'Obsolete fields remain' }
+        $config.printer='Microsoft Print to PDF'; $config.output_mode='printer'; $printers.SelectedItem=$null; Refresh-Printers
+        if ($printers.SelectedItem -ne $pdfChoice) { throw 'Legacy PDF printer was not mapped to PDF output' }
+        $null=$printers.Items.Add('FAKE OFFICE PRINTER'); $printers.SelectedItem='FAKE OFFICE PRINTER'
+        if ($outputFolder.Visible -or $outputLabel.Visible -or $browseOutput.Visible) { throw 'PDF folder controls visible for printer output' }
+        $printers.SelectedItem=$pdfChoice
         $timer.Start(); Start-ModeSetup 'virtual'
         if ($enableVirtual.Enabled -or -not $setupProgress.Visible -or $modeLabel.Text -notlike 'Setting up*') { throw 'Setup feedback missing' }
         $deadline=(Get-Date).AddSeconds(15); $ticks=0

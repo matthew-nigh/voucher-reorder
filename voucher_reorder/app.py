@@ -28,6 +28,8 @@ def main():
             "submit",
             "discard",
             "resume",
+            "clear-finished",
+            "dismiss",
             "stop",
         ],
     )
@@ -80,11 +82,14 @@ def main():
                 source = args.file
                 if source is None:
                     raise ValueError("Choose a PDF.")
-            accepted = Queue(root / "jobs").accept_bytes(read_pdf(source), settings)
+            queue = Queue(root / "jobs")
+            accepted = queue.accept_bytes(read_pdf(source), settings, return_job=args.command == "alignment")
             if not accepted:
                 print("This exact PDF was already received in the last 24 hours; it was not printed again.")
             else:
                 print("Job queued. Inspect Job status for the saved PDF or printer submission.")
+                if args.command == "alignment" and settings.output_mode == "pdf":
+                    print(f"Alignment job: {accepted.parent.name}")
         from .windows import register_user
 
         register_user()
@@ -96,6 +101,16 @@ def main():
             raise ValueError("Select a failed job to retry.")
         Queue(root / "jobs").retry(str(args.file), load(config))
         register_user()
+    elif args.command in ("clear-finished", "dismiss"):
+        from .queue import Queue
+
+        queue = Queue(root / "jobs")
+        if args.command == "clear-finished":
+            queue.clear_finished()
+        else:
+            if not args.file:
+                raise ValueError("Select a failed or review job to dismiss.")
+            queue.dismiss(str(args.file))
     elif args.command == "status":
         print(f"Mode: {load(config).mode}. Job status is saved on disk.")
         for name in ("watcher.json", "worker.json", "printer-warning.json"):

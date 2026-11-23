@@ -89,6 +89,21 @@ class Queue:
             atomic_json(job, state)
             shutil.rmtree(folder)
 
+    def clear_finished(self):
+        """Remove sent job records now; saved PDFs are outside the queue."""
+        with self.lock, self.transaction():
+            for job in self.jobs():
+                if self.read(job)["state"] == "sent":
+                    shutil.rmtree(job.parent)
+
+    def dismiss(self, identifier):
+        """Remove one failure from status while retaining Needs attention."""
+        with self.lock, self.transaction():
+            job = next((j for j in self.jobs() if j.parent.name == identifier), None)
+            if job is None or self.read(job)["state"] not in {"failed", "review"}:
+                raise ValueError("Select a failed or review job to dismiss.")
+            shutil.rmtree(job.parent)
+
     def accept_file(self, source, settings, document=None):
         """Claim a completed arrival by rename while denying other readers/writers.
 
@@ -163,7 +178,7 @@ class Queue:
             del state["pending_receipt"]
             atomic_json(job, state)
 
-    def accept_bytes(self, payload, settings: Settings, kind="pdf", source=None):
+    def accept_bytes(self, payload, settings: Settings, kind="pdf", source=None, return_job=False):
         if kind not in ("pdf", "ps") or not 0 < len(payload) <= MAX_JOB:
             raise ValueError("Job must be a PDF or PostScript file under 100 MiB.")
         digest = hashlib.sha256(payload).hexdigest()
@@ -212,7 +227,7 @@ class Queue:
             if source:
                 job = folder / "state.json"
                 self.reconcile(job, self.read(job))
-            return True
+            return folder / "state.json" if return_job else True
 
     def accept(self, path, settings=None):
         return self.accept_bytes(path.read_bytes(), settings or Settings(), "ps")

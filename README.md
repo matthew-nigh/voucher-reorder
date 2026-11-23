@@ -11,7 +11,7 @@ on your QuickBooks/printer before putting live check stock in the tray.
 
 ## Install and choose a mode
 
-Download `VoucherReorder-0.2.3-Setup.exe` from the PR's **Actions artifact** (or a
+Download `VoucherReorder-0.2.4-Setup.exe` from the PR's **Actions artifact** (or a
 future tagged Release). Run it normally. Python and PDF tools are included.
 The source archive and SHA256SUMS.txt are only for building from source or verifying
 the download; there is no separate Provisioning executable.
@@ -223,7 +223,7 @@ python3 scripts/build_windows.py
 Outputs are in `dist/`: the installer, matching `-sources.zip`, and `SHA256SUMS.txt`.
 The script packages official x64 Windows binaries from SHA-256-pinned downloads in
 `packaging/dependencies.json`; it does not claim to cross-compile those upstream
-programs. `--stage-only` prepares files; `--version 0.2.3` overrides the packaging
+programs. `--stage-only` prepares files; `--version 0.2.4` overrides the packaging
 version for upgrade tests (no tag/release is created). Installations need no network
 in PDF mode. Virtual setup uses the already available Windows PDF driver; policy or missing-driver failures fall back to PDF mode.
 

@@ -1,4 +1,4 @@
-# Windows acceptance — v0.2.3
+# Windows acceptance — v0.2.4
 
 Use synthetic documents and plain paper. CI is Windows Server 2022 x64; it does
 not qualify every Windows 10/11 driver, QuickBooks release, or interactive UAC path.
@@ -24,7 +24,8 @@ The workflow runs pytest and ruff, builds Setup.exe/source/SHA256SUMS, and check
 - Six consecutive ten-page output jobs, vector content/page IDs, bounded memory,
   PDF reprint, image/layer/blank rejection, specific errors and scratch cleanup.
 - WinForms construction, all 36 order mappings, 100/150/200% simulated DPI, small
-  windows, PDF output, and asynchronous optional setup.
+  windows, PDF output, and asynchronous optional setup. The Settings title bar,
+  taskbar, Start shortcut and installer use the printer icon.
 
 The hosted runner already supports Microsoft's PDF driver and printer creation
 in prior output tests. Clone tests are required, not silently skipped. If a future
@@ -36,7 +37,7 @@ kernel waits. The active document supervisor still enforces resource deadlines.
 
 ## No-admin PDF mode and quiet idle
 
-1. Run `VoucherReorder-0.2.3-Setup.exe` normally as a standard user. Only Setup.exe
+1. Run `VoucherReorder-0.2.4-Setup.exe` normally as a standard user. Only Setup.exe
    is for installation; source and checksums are for building/verifying.
 2. Choose an output folder outside all private job folders, or a real printer.
    Save PDFs to Inbox using existing Microsoft Print to PDF or another exporter.
@@ -49,7 +50,16 @@ kernel waits. The active document supervisor still enforces resource deadlines.
    finish saving and click Job status → Retry pickup. Do not wait for a timer.
 5. Disable/re-enable Inbox watching and confirm pending files are picked up only
    when enabled. Sign out/in and restart the app; no successful job should replay.
-6. Leave idle for five minutes with Task Manager/Process Explorer. Expect only a
+   The checkbox is beside the Inbox controls and reads **Automatically reorder PDFs
+   saved to the Inbox**.
+6. Select **Save reordered PDF**. Confirm the output folder controls appear. Select
+   a physical printer and confirm they disappear. Microsoft Print to PDF, XPS
+   writers and Voucher Reorder must not appear as output printers; a saved PDF/XPS
+   printer selection must open as Save reordered PDF.
+7. In PDF output mode, click **Print alignment test**. Once saved, Explorer must
+   open its folder and select the generated PDF. In printer mode, Job status keeps
+   the existing queued job behavior.
+8. Leave idle for five minutes with Task Manager/Process Explorer. Expect only a
    small `pythonw.exe` broker, no PDF worker, periodic child process, heartbeat
    writes or recurring busy cursor. Status reads must not start a processor.
 
@@ -84,6 +94,9 @@ kernel waits. The active document supervisor still enforces resource deadlines.
   reason.json, Job status lists it, Open folder opens that directory, and Retry
   asks for physical-output reconciliation before requeueing with current settings.
   Restart and wait past 24 hours: failure input must remain. Successful retry deletes it.
+- Confirm **Clear finished** prompts and removes sent job entries immediately,
+  without deleting saved PDFs. Confirm **Dismiss** removes only the selected failed
+  or review entry while its input stays in Needs attention.
 - Crash during pickup or processing: receiving jobs with a moved PDF recover;
   interrupted printing is marked review and never automatically resent.
 - Upgrade v0.2.x without elevation: old worker stops, its Run entry and known owned
@@ -92,7 +105,7 @@ kernel waits. The active document supervisor still enforces resource deadlines.
   outstanding jobs; create the clone. Reject a foreign queue with the same name.
 - Uninstall preserves settings and outstanding data. Refused optional printer
   removal must be explicit. Old provisioning installation files are not executed
-  by v0.2.3 and are not part of the new download.
+  by v0.2.4 and are not part of the new download.
 
 ## Physical acceptance
 

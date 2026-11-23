@@ -10,7 +10,11 @@ Unicode True
 !ifndef OUTPUT
   !error "Pass DOUTPUT"
 !endif
+!define MUI_ICON "${STAGE}\packaging\printer.ico"
+!define MUI_UNICON "${STAGE}\packaging\printer.ico"
 Name "Voucher Reorder"
+Icon "${STAGE}\packaging\printer.ico"
+UninstallIcon "${STAGE}\packaging\printer.ico"
 OutFile "${OUTPUT}"
 InstallDir "$LOCALAPPDATA\Programs\Voucher Reorder"
 RequestExecutionLevel user

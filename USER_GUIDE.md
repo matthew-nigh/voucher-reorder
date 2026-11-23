@@ -2,7 +2,7 @@
 
 **Start with plain paper, not check stock.** Windows 10/11 x64 is supported.
 
-1. **Install or upgrade.** Run `VoucherReorder-0.2.2-Setup.exe` normally. If SmartScreen
+1. **Install or upgrade.** Run `VoucherReorder-0.2.4-Setup.exe` normally. If SmartScreen
    appears, confirm the download came from this project, then choose **More info →
    Run anyway**. PDF mode needs no administrator access. For virtual mode, select
    **Virtual printer (one administrator prompt)** in setup. Setup includes the matching
@@ -12,9 +12,9 @@
    update the optional component. Your printer/layout settings stay saved.
 2. **Choose the output and both orders.** Open Voucher Reorder from Start. Choose
    your printer, matching paper size and tray. Without a physical printer, choose
-   **Save reordered PDF (test, no physical printer)** and **Browse** to a folder
-   outside the Inbox. Microsoft Print to PDF and PDF/XPS writer selections use this
-   same direct PDF output. No physical printer or output-driver Save dialog is needed.
+   **Save reordered PDF** and **Browse** to a folder outside the Inbox. The folder
+   controls appear only for PDF output. PDF/XPS writers and Voucher Reorder are not
+   output printer choices. Older settings that name a PDF/XPS writer open in PDF output.
    On the Alignment tab, choose the **Source page (QuickBooks)** order on the left
    and **Printed output (physical stock)** order on the right, both top to bottom.
    The source defaults to Check / Stub 1 / Stub 2. Check the labeled previews and
@@ -27,7 +27,7 @@
    For unequal sections, measure both dividing lines from the top of the original
    source page: for heights 3.5 / 3.5 / 4 inches, enter `3.5` and `7`. Printer margins
    can clip text; the app will not shrink it to fit. In PDF output mode, the alignment
-   test saves a vector PDF; **Job status** gives its path. Open it to check section
+   test saves a vector PDF and opens its folder with the file selected. Open it to check section
    placement. Physical alignment/MICR still require a real printer test.
 4. **Print from QuickBooks using the active mode.**
    - **Virtual printer:** select **Voucher Reorder**, portrait, the matching paper
@@ -35,7 +35,7 @@
    - **PDF handoff:** select an already available **Microsoft Print to PDF** (or your
      existing PDF exporter). Click **Copy Inbox path** in the app and paste that
      folder into the Save dialog. Save each new job under a new PDF filename. With
-     automatic Inbox processing checked, it prints or saves the reordered PDF when saving finishes. Or save
+     **Automatically reorder PDFs saved to the Inbox** checked, it prints or saves the reordered PDF when saving finishes. Or save
      elsewhere, then click **Print a PDF** and choose the file. If no PDF printer or
      exporter exists, ask your administrator to enable one; this app does not do so.
 5. **Approve the real layout.** Print one QuickBooks check to **plain paper only**,
@@ -62,7 +62,7 @@ Flatten layers before export and split batches larger than 250 pages.
 **If nothing prints:** check Job status, the real Windows printer queue, and paper
 already printed. “Sent” can still mean waiting in Windows. Do not simply print again.
 Exact duplicate PDFs are suppressed for 24 hours. Cancel unwanted jobs in both the
-app and Windows. Inbox arrivals move to unique jobs and are deleted after successful output. Failed inputs remain in Needs attention; Job status offers Open folder and Retry.
+app and Windows. Inbox arrivals move to unique jobs and are deleted after successful output. Failed inputs remain in Needs attention; Job status offers Open folder and Retry. **Clear finished** removes sent jobs from Job status after confirmation; saved PDFs remain in the output folder. **Dismiss** removes a selected failed or review job from Job status while its input remains in Needs attention.
 
 **Switch modes:** use the buttons at the top of the app. Adding/removing the virtual
 printer needs UAC; PDF mode does not. During setup, “Setting up the Voucher Reorder

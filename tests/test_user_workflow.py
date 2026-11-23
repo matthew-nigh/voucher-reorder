@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import sys
 from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,6 +15,46 @@ from voucher_reorder.lifecycle import stop_worker
 from voucher_reorder.locking import FileLock
 from voucher_reorder.queue import Queue
 from voucher_reorder.worker import process_one
+
+
+def test_job_status_cleanup_commands_keep_failed_input(tmp_path, monkeypatch):
+    from voucher_reorder import app
+
+    queue = Queue(tmp_path / "jobs")
+    for marker, state in (
+        (b"sent", "sent"),
+        (b"failed", "failed"),
+        (b"review", "review"),
+        (b"waiting", "queued"),
+    ):
+        assert queue.accept_bytes(b"%PDF-" + marker, config())
+        job = queue.jobs()[-1]
+        if state != "queued":
+            queue.update(job, state)
+    failed = next(j for j in queue.jobs() if queue.read(j)["state"] == "failed")
+    review = next(j for j in queue.jobs() if queue.read(j)["state"] == "review")
+    failed_id = failed.parent.name
+    review_id = review.parent.name
+    monkeypatch.setattr(app, "data_dir", lambda: tmp_path)
+    monkeypatch.setattr(sys, "argv", ["app.py", "clear-finished"])
+    app.main()
+    assert sorted(queue.read(j)["state"] for j in queue.jobs()) == ["failed", "queued", "review"]
+    monkeypatch.setattr(sys, "argv", ["app.py", "dismiss", "--file", failed_id])
+    app.main()
+    assert (tmp_path / "Needs attention" / failed_id / "input.pdf").exists()
+    assert not failed.exists()
+    monkeypatch.setattr(sys, "argv", ["app.py", "dismiss", "--file", review_id])
+    app.main()
+    assert (tmp_path / "Needs attention" / review_id / "input.pdf").exists()
+    assert [queue.read(j)["state"] for j in queue.jobs()] == ["queued"]
+    with pytest.raises(ValueError, match="failed or review"):
+        app.main()
+
+
+def test_alignment_queue_returns_exact_job_for_ui(tmp_path):
+    queue = Queue(tmp_path / "jobs")
+    job = queue.accept_bytes(b"%PDF-alignment", config(), return_job=True)
+    assert job == queue.jobs()[0]
 
 
 def config():
