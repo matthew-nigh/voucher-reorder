@@ -6,6 +6,7 @@ import sys
 
 import pytest
 
+from scripts.test_notifications_windows import read_json_snapshot
 from voucher_reorder import spool, watcher, worker
 from voucher_reorder.config import Settings, save
 from voucher_reorder.notifications import relevant
@@ -47,6 +48,30 @@ def settings(root, **kwargs):
     config = Settings(output_mode="pdf", output_folder=str(root / "saved"), **kwargs)
     save(root / "settings.json", config)
     return config
+
+
+def test_windows_status_snapshot_retries_transient_sharing_denial():
+    class TemporarilyLocked:
+        reads = 0
+
+        def read_text(self):
+            self.reads += 1
+            if self.reads == 1:
+                raise PermissionError("synthetic Windows sharing denial")
+            return '{"launches": 1, "exits": 1}'
+
+    path = TemporarilyLocked()
+    assert read_json_snapshot(path) == {"launches": 1, "exits": 1}
+    assert path.reads == 2
+
+
+def test_windows_status_snapshot_preserves_persistent_access_failure():
+    class Locked:
+        def read_text(self):
+            raise PermissionError("synthetic persistent denial")
+
+    with pytest.raises(PermissionError):
+        read_json_snapshot(Locked(), timeout=0)
 
 
 def test_watcher_import_does_not_load_pdf_or_processing_stack():

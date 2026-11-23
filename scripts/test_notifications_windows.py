@@ -58,6 +58,26 @@ def wait_for(check, description, timeout=60):
     raise AssertionError(f"Timed out: {description}")
 
 
+def read_json_snapshot(path, *, missing_ok=False, timeout=3.5):
+    """Read an atomically replaced status file across Windows sharing windows.
+
+    A writer can briefly deny a concurrent open while replacing the old file.
+    Only that transient denial is retried; a persistent access error still fails.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            return json.loads(path.read_text())
+        except FileNotFoundError:
+            if missing_ok:
+                return {}
+            raise
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.02)
+
+
 def main(virtual=False):
     with tempfile.TemporaryDirectory() as temporary:
         base = Path(temporary)
@@ -74,11 +94,10 @@ def main(virtual=False):
         with subprocess.Popen([str(executable), "-c", BOOTSTRAP], env=env, **background_options()) as broker:
 
             def read(name):
-                path = root / name
-                return json.loads(path.read_text()) if path.exists() else {}
+                return read_json_snapshot(root / name, missing_ok=True)
 
             def states():
-                return [json.loads(p.read_text()) for p in (root / "jobs").glob("*/state.json")]
+                return [read_json_snapshot(p) for p in (root / "jobs").glob("*/state.json")]
 
             def idle():
                 data = read("metrics.json")
@@ -96,7 +115,7 @@ def main(virtual=False):
                 before = read("metrics.json")
                 time.sleep(3)
                 after = read("metrics.json")
-                assert before == after, (before, after)
+                assert before and before == after, (before, after)
                 assert broker.poll() is None
 
             try:
