@@ -30,6 +30,11 @@ def wait_for(check):
         time.sleep(0.2)
 
 
+def move_output_when_released(source, destination):
+    """Wait for the print port to close a complete PDF before moving it."""
+    return wait_for(lambda: source.rename(destination))
+
+
 def main(folder, printer):
     folder.mkdir(parents=True, exist_ok=True)
     settings = Settings(output_mode="pdf", output_folder=str(folder / "saved"))
@@ -64,7 +69,9 @@ def main(folder, printer):
         wait_for(complete)
         job = folder / f"roundtrip-{generation}"
         job.mkdir()
-        output.rename(job / "input.pdf")
+        # The local port may release its write handle shortly after the PDF is
+        # complete and parseable. Keep the validated file and wait for that handle.
+        move_output_when_released(output, job / "input.pdf")
         execute("prepare", job, settings)
         validate_vector_pdf(job / "output.pdf")
         sizes[f"printer_pdf_{generation}"] = (job / "input.pdf").stat().st_size

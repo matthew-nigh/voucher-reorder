@@ -10,6 +10,7 @@ import pytest
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import ArrayObject, DecodedStreamObject, DictionaryObject, NameObject, NumberObject
 
+from scripts import test_feedback_windows
 from voucher_reorder import bounded, worker
 from voucher_reorder.alignment import create
 from voucher_reorder.config import Settings
@@ -17,6 +18,30 @@ from voucher_reorder.engine import reorder
 from voucher_reorder.pdf_errors import MESSAGES, PdfError
 from voucher_reorder.printing import validate_vector_pdf
 from voucher_reorder.queue import Queue
+
+
+def test_feedback_waits_for_printer_to_release_completed_pdf(tmp_path, monkeypatch):
+    source = tmp_path / "device.pdf"
+    destination = tmp_path / "input.pdf"
+    source.write_bytes(b"FAKE completed PDF")
+    real_rename = Path.rename
+    attempts = []
+    delays = []
+
+    def busy_twice(path, target):
+        attempts.append((path, target))
+        if len(attempts) <= 2:
+            raise PermissionError("FAKE Windows sharing violation")
+        return real_rename(path, target)
+
+    monkeypatch.setattr(Path, "rename", busy_twice)
+    monkeypatch.setattr(test_feedback_windows.time, "sleep", delays.append)
+    test_feedback_windows.move_output_when_released(source, destination)
+
+    assert attempts == [(source, destination)] * 3
+    assert delays == [0.2, 0.2]
+    assert not source.exists()
+    assert destination.read_bytes() == b"FAKE completed PDF"
 
 
 def test_alignment_compact_and_repeated_reprints(tmp_path):
