@@ -11,25 +11,28 @@ The supported Local Port alternative names a **single fixed file**; Microsoft
 [describes that exact setup](https://learn.microsoft.com/en-us/troubleshoot/windows-server/printing/print-to-file-without-user-intervention)
 as saving every job to the configured path. In this app, a fixed file would
 overwrite or collide with another job while the watcher is stopped or two jobs
-arrive together, reopening CR-04. Changing a queue's port between jobs cannot
-bind arbitrary QuickBooks submissions to distinct paths across offline periods.
+arrive together, reopening CR-04. Keeping the queue paused while the app is
+stopped retains offline jobs, but does not make the proposed one-job release
+safe: resuming the printer to process job A also makes any already queued job B
+eligible to run. Pausing B after receiving a change notification races the
+spooler's dispatch, and a new job may arrive during A's output. Holding each
+observed job has the same admission-to-hold race. The app cannot associate
+the fixed file with a job or know that it is complete merely from file size or
+an idle interval; a driver can close and retry a partial file. Moving that
+file before the next writer starts would require a spooler-enforced atomic
+single-job gate, which the standard Local Port queue does not provide.
+Changing a queue's port between jobs cannot bind arbitrary QuickBooks
+submissions to distinct paths across offline periods.
 `PORTPROMPT:` gives a per-job filename dialog, but loses the unattended virtual
 queue behavior. The existing PDF Inbox mode already supports that manual path.
 
-CR-02 also cannot be closed by *assuming* Local Port writes run as the submitting
-user. Microsoft's [Print Services security overview](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-prsod/340e969b-3243-4116-bf79-47c45bb40264)
-describes user impersonation for processing external resources, but does not
-specify the token used by this driver/monitor when it opens a file port. The new
-`scripts/probe_pdf_local_port.ps1` is a **diagnostic**, run by Windows CI after
-the existing v4 vector-output test: it submits from a real standard-user account,
-records the PDF file owner's SID, then redirects the same path through a junction
-to a directory writable only by SYSTEM/administrators and reports whether a file
-appears there. It does not change the installed queue and does not gate this
-Imagesetter design. The results have **not yet been observed**; this Linux host
-cannot establish Windows token or junction behavior. A user-owned PDF and a
-blocked junction would support the narrow token hypothesis on that runner, but
-would still leave the fixed-filename CR-04 failure. No v4 virtual-printer change
-is shipped on the basis of this probe.
+The Windows CI probe at `9478651` supplies narrow CR-02 evidence for the built-in
+driver: a standard user's Local Port output was owned by that submitting user,
+and redirecting the port directory through a junction into an administrator-only
+folder did not create a file in the protected target. On that tested configuration,
+the write uses the user's security context, so the junction cannot turn it into
+a privileged write. The probe is diagnostic and leaves the installed queue alone.
+It does not resolve the CR-04 scheduling race, so the v4 path is not shipped.
 
 ## Follow-up implementation status
 
@@ -61,6 +64,14 @@ pause/resume fixed-file guard is removed. Existing fixed-port installations fall
 back to PDF mode until explicitly migrated. Removal still never restarts Spooler.
 The v3 MS Publisher Imagesetter driver produces the PostScript; the bounded
 Ghostscript worker converts it to PDF under the desktop user's account.
+The Windows acceptance script verifies distinct complete files for two jobs
+submitted back to back while the watcher is stopped, then checks their rendered
+PDF page counts and text after pickup. This tests the retained unique-job path;
+it does not qualify the unsafe fixed-file PDF Local Port path.
+The monitor only publishes a flushed `.ps` after a successful job; failed or
+interrupted writes remain `.partial` and are never admitted by the watcher.
+On restart, completed `.ps` files are retried through the UUID-keyed durable
+copy/ack handoff, while stale partial files require administrator cleanup.
 
 **Residual risk:** the new privileged native code and v3 printer driver/monitor
 integration require Windows 10/11 UAC, ACL, reparse, offline burst and crash

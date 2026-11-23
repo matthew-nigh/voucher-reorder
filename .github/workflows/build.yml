@@ -113,7 +113,7 @@ jobs:
         run: |
           Copy-Item downloads upgrade-baseline/downloads -Recurse
           python upgrade-baseline/scripts/build_windows.py
-      - name: Migrate legacy queue, test no-dialog clone printing and built-in removal
+      - name: Migrate queue, verify distinct complete offline burst PDFs and remove printer
         shell: powershell
         timeout-minutes: 6
         run: scripts/test_provisioning.ps1 -Installer upgrade-baseline/dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.6-Setup.exe
