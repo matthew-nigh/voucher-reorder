@@ -46,7 +46,11 @@ $current=Get-Content (Join-Path $root 'current.json') -Raw | ConvertFrom-Json
 if ($current.version -ne '0.2.6') { throw 'Wrong upgraded version' }
 $app=Join-Path $root ('deployments\'+$current.directory)
 $python=Join-Path $app 'runtime\python.exe'
-$printer=Get-Printer -Name 'Voucher Reorder'
+$printer=Get-Printer -Name 'Voucher Reorder' -ErrorAction SilentlyContinue
+if (-not $printer) {
+    $mode=(Get-Content (Join-Path $data 'settings.json') -Raw | ConvertFrom-Json).mode
+    throw "Protected-port clone setup failed: printer absent; saved mode=$mode"
+}
 if ($printer.DriverName -ne 'Microsoft Print To PDF' -or $printer.PortName -ne $securePort) {
     Get-Content (Join-Path $data 'mode-status.txt') -ErrorAction SilentlyContinue
     throw 'Protected-port clone setup failed'
