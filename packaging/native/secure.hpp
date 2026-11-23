@@ -12,7 +12,9 @@
 #include <cstring>
 
 namespace vr {
-inline void check(bool ok) { if (!ok) throw std::runtime_error("Protected printer operation failed"); }
+inline void check(bool ok, const char* operation = "Protected printer operation failed") {
+    if (!ok) throw std::runtime_error(operation);
+}
 struct Handle {
     HANDLE value = INVALID_HANDLE_VALUE;
     explicit Handle(HANDLE h = INVALID_HANDLE_VALUE) : value(h) {}
@@ -60,36 +62,35 @@ inline std::wstring directory_acl(const std::wstring& reader = L"") {
     return L"O:BAG:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)" +
         (reader.empty() ? L"" : L"(A;;GRGX;;;" + reader + L")");
 }
-inline void verify(HANDLE h, const std::wstring& path, bool ancestor = false) {
+inline void verify(HANDLE h, const std::wstring& path, bool ancestor = false, bool compareName = true) {
     BY_HANDLE_FILE_INFORMATION info{};
-    check(GetFileInformationByHandle(h, &info));
-    check(!(info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT));
-    check((info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || info.nNumberOfLinks == 1);
-    wchar_t finalPath[32768];
-    // Every component was opened without following reparses. The opened name
-    // needs no further normalization, which can require traversal permission
-    // on an ancestor even though this handle is already valid.
-    DWORD n = GetFinalPathNameByHandleW(h, finalPath, 32768, FILE_NAME_OPENED | VOLUME_NAME_DOS);
-    check(n && n < 32768);
-    auto expected = L"\\\\?\\" + path;
-    check(_wcsicmp(expected.c_str(), finalPath) == 0);
+    check(GetFileInformationByHandle(h, &info), "read file identity");
+    check(!(info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT), "reparse point");
+    check((info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || info.nNumberOfLinks == 1, "multiple links");
+    if (compareName) {
+        wchar_t finalPath[32768];
+        DWORD n = GetFinalPathNameByHandleW(h, finalPath, 32768, FILE_NAME_OPENED | VOLUME_NAME_DOS);
+        check(n && n < 32768, "read final path");
+        auto expected = L"\\\\?\\" + path;
+        check(_wcsicmp(expected.c_str(), finalPath) == 0, "final path mismatch");
+    }
     PSID owner = nullptr; PACL acl = nullptr; PSECURITY_DESCRIPTOR sd = nullptr;
     check(GetSecurityInfo(h, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
-        &owner, nullptr, &acl, nullptr, &sd) == ERROR_SUCCESS);
+        &owner, nullptr, &acl, nullptr, &sd) == ERROR_SUCCESS, "read owner and ACL");
     std::unique_ptr<void, decltype(&LocalFree)> freeSD(sd, LocalFree);
-    check(owner && trusted(owner) && acl);
+    check(owner && trusted(owner) && acl, "untrusted owner or missing ACL");
     for (DWORD i = 0; i < acl->AceCount; ++i) {
-        void* raw = nullptr; check(GetAce(acl, i, &raw));
+        void* raw = nullptr; check(GetAce(acl, i, &raw), "read ACL entry");
         auto header = static_cast<ACE_HEADER*>(raw);
         if (header->AceFlags & INHERIT_ONLY_ACE) continue;
         if (header->AceType == ACCESS_DENIED_ACE_TYPE) continue;
-        check(header->AceType == ACCESS_ALLOWED_ACE_TYPE);
+        check(header->AceType == ACCESS_ALLOWED_ACE_TYPE, "unsupported ACL entry");
         auto ace = static_cast<ACCESS_ALLOWED_ACE*>(raw);
         if (trusted(&ace->SidStart)) continue;
         DWORD forbidden = DELETE | WRITE_DAC | WRITE_OWNER | FILE_DELETE_CHILD | GENERIC_ALL | GENERIC_WRITE |
             FILE_WRITE_EA | FILE_WRITE_ATTRIBUTES;
         if (!ancestor) forbidden |= FILE_WRITE_DATA | FILE_APPEND_DATA;
-        check(!(ace->Mask & forbidden));
+        check(!(ace->Mask & forbidden), "untrusted writable ACL entry");
     }
 }
 // Each component is opened without following reparses and held without delete
@@ -98,23 +99,42 @@ struct LockedTree {
     std::vector<std::unique_ptr<Handle>> handles;
     explicit LockedTree(const std::wstring& path, bool create = false, const std::wstring& reader = L"") {
         check(path.size() > 3 && path[1] == L':' && path[2] == L'\\');
-        for (size_t end = 3; ; ) {
+        size_t component = 0;
+        for (size_t end = 3; ; ++component) {
             auto part = path.substr(0, end);
             bool leaf = end == path.size();
-            if (leaf && create) {
-                Descriptor sd(directory_acl(reader));
-                SECURITY_ATTRIBUTES sa{sizeof(sa), sd.value, FALSE};
-                check(CreateDirectoryW(part.c_str(), &sa) || GetLastError() == ERROR_ALREADY_EXISTS);
+            try {
+                if (leaf && create) {
+                    Descriptor sd(directory_acl(reader));
+                    SECURITY_ATTRIBUTES sa{sizeof(sa), sd.value, FALSE};
+                    check(CreateDirectoryW(part.c_str(), &sa) || GetLastError() == ERROR_ALREADY_EXISTS,
+                        "create protected directory");
+                }
+                auto h = std::make_unique<Handle>(CreateFileW(part.c_str(), READ_CONTROL | FILE_READ_ATTRIBUTES,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+                    FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
+                check(h->value != INVALID_HANDLE_VALUE, "open directory component");
+                // Bind the held handle to this lexical component by file ID.
+                // DOS final-name strings can vary for a valid handle (notably
+                // a volume root); object identity does not depend on spelling.
+                verify(h->value, part, !leaf, false);
+                Handle reopened(CreateFileW(part.c_str(), FILE_READ_ATTRIBUTES,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+                    FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
+                check(reopened.value != INVALID_HANDLE_VALUE, "reopen directory component");
+                BY_HANDLE_FILE_INFORMATION first{}, second{};
+                check(GetFileInformationByHandle(h->value, &first) &&
+                    GetFileInformationByHandle(reopened.value, &second), "compare directory identity");
+                check(first.dwVolumeSerialNumber == second.dwVolumeSerialNumber &&
+                    first.nFileIndexHigh == second.nFileIndexHigh && first.nFileIndexLow == second.nFileIndexLow,
+                    "directory identity changed");
+                handles.push_back(std::move(h));
+                if (leaf) break;
+                auto next = path.find(L'\\', end + (end == 3 ? 0 : 1));
+                end = next == std::wstring::npos ? path.size() : next;
+            } catch (const std::exception& error) {
+                throw std::runtime_error("directory component " + std::to_string(component) + ": " + error.what());
             }
-            auto h = std::make_unique<Handle>(CreateFileW(part.c_str(), READ_CONTROL | FILE_READ_ATTRIBUTES,
-                FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
-                FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
-            check(h->value != INVALID_HANDLE_VALUE);
-            verify(h->value, part, !leaf);
-            handles.push_back(std::move(h));
-            if (leaf) break;
-            auto next = path.find(L'\\', end + (end == 3 ? 0 : 1));
-            end = next == std::wstring::npos ? path.size() : next;
         }
     }
 };
