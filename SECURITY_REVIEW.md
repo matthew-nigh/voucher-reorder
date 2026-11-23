@@ -20,8 +20,8 @@ it no longer elevates PowerShell or reads a per-user script into privileged code
 The helper also refuses execution outside its protected installed location.
 
 The native monitor writes UUID-named jobs under an administrator/SYSTEM-owned
-ProgramData spool, never into a user-controlled folder. It rejects reparse points,
-untrusted owners/ACLs and mismatched final paths and holds ancestor handles without
+Program Files spool, never into a user-controlled folder. It rejects reparse points,
+untrusted owners/ACLs and mismatched directory identities and holds ancestor handles without
 delete sharing. Files use exclusive `CREATE_NEW`, are flushed, and are published
 without replacement; user read/delete rights apply only to completed files. The
 unprivileged handoff copies into the durable queue and records the UUID before
@@ -153,8 +153,8 @@ spool destination with authenticated handoff or an equivalent handle-based desig
 that cannot be retargeted by the desktop user. Do not rely on a one-time `resolve`
 or `Test-Path` check.
 **Follow-up status: fixed in source.** `packaging/native/monitor.cpp` and
-`secure.hpp` bind writes to protected ProgramData directories, verify every
-component without following reparses, check final handle names/ACLs/owners, and
+`secure.hpp` bind writes to protected Program Files directories, verify every
+component without following reparses, check directory identities/ACLs/owners, and
 hold ancestors against replacement. User ACLs cannot create entries or retarget
 those directories; completed files permit read/delete only. Handoff occurs at
 user privilege in `Queue.accept_file(protected_spool=True)`. Native tests cover

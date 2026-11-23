@@ -98,7 +98,7 @@ kernel waits. The active document supervisor still enforces resource deadlines.
    enables the Windows feature separately.
 4. Print from Notepad, Edge and QuickBooks without Save As. Send two ten-page jobs
    back to back, including with the watcher stopped and while signed out. Verify
-   distinct UUID PDFs in `%ProgramData%\VoucherReorderSpool\<SID>` and all 20 pages
+   distinct UUID PDFs in `%ProgramFiles%\VoucherReorderPrinter\Spool\<SID>` and all 20 pages
    after restarting pickup. No pause/resume race is part of job isolation now.
 5. In a disposable VM, preplant junctions at the spool root, SID directory, and
    helper directory; each operation must fail without touching an external benign

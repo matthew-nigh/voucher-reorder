@@ -19,7 +19,7 @@ int wmain(int argc, wchar_t** argv) {
         vr::check(vr::account_sid(L"S-1-5-21-1-2-3-1001"));
         for (auto bad : {L"S-1-5-18", L"S-1-5-32-544", L"S-1-5-21-1-2-3-1001\\..", L"../../victim"})
             vr::check(!vr::account_sid(bad));
-        auto root = vr::known(FOLDERID_ProgramData) + L"\\VoucherReorderSecurityTest";
+        auto root = vr::known(FOLDERID_ProgramFilesX64) + L"\\VoucherReorderSecurityTest";
         {
             stage = L"create and verify protected fixture";
             vr::LockedTree tree(root, true);

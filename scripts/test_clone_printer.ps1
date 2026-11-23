@@ -5,7 +5,7 @@ $python=Join-Path $AppRoot 'runtime\python.exe'
 $app=Join-Path $AppRoot 'app.py'
 $data=Join-Path $env:LOCALAPPDATA 'VoucherReorder'
 $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-$incoming=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) ('VoucherReorderSpool\'+$sid)
+$incoming=Join-Path ([Environment]::GetFolderPath('ProgramFiles')) ('VoucherReorderPrinter\Spool\'+$sid)
 & $python -c "from voucher_reorder.config import *; save(data_dir()/'settings.json',Settings(mode='virtual',output_mode='pdf',output_folder=str(data_dir()/'CI-output')))"
 if ($LASTEXITCODE) { throw 'Could not configure output' }
 & $python $app register

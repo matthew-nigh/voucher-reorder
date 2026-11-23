@@ -8,12 +8,13 @@ from pathlib import Path
 def incoming_folder():
     from .spool_metadata import _checked, _owner_sid
 
-    # Resolve the Windows known folder, not a user-controlled environment variable.
+    # The native helper uses FOLDERID_ProgramFilesX64. This bundled Python is x64,
+    # so CSIDL_PROGRAM_FILES resolves to that same protected known folder.
     shell = c.WinDLL("shell32", use_last_error=True)
     shell.SHGetFolderPathW.argtypes = [w.HWND, c.c_int, w.HANDLE, w.DWORD, w.LPWSTR]
     path = c.create_unicode_buffer(32768)
-    _checked(shell.SHGetFolderPathW(None, 0x23, None, 0, path) == 0)
-    return Path(path.value) / "VoucherReorderSpool" / _owner_sid()
+    _checked(shell.SHGetFolderPathW(None, 0x26, None, 0, path) == 0)
+    return Path(path.value) / "VoucherReorderPrinter" / "Spool" / _owner_sid()
 
 
 class Guard:

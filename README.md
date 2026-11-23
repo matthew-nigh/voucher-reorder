@@ -144,9 +144,9 @@ The owner-restricted, unshared **Voucher Reorder** queue uses the built-in
 **Microsoft Print To PDF** driver and the native **Voucher Reorder Secure Port**
 monitor. The port name is `VoucherReorder:<desktop SID>`, including alternate-admin
 setup. The monitor writes only beneath
-`%ProgramData%\VoucherReorderSpool\<desktop SID>`, with administrator/SYSTEM
+`%ProgramFiles%\VoucherReorderPrinter\Spool\<desktop SID>`, with administrator/SYSTEM
 ownership and no user directory-write rights. It holds no-reparse directory
-handles, checks final paths and ACLs, creates a UUID file with `CREATE_NEW`, flushes
+handles, checks directory identities and ACLs, creates a UUID file with `CREATE_NEW`, flushes
 it, and publishes `.pdf` without replacement. Document titles and application
 output filenames never select the destination. Completed files grant the desktop
 user read/delete access; the privileged monitor never writes into the profile.

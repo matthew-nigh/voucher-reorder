@@ -39,7 +39,7 @@ inline std::wstring system_directory() {
     wchar_t path[32768]; UINT n = GetSystemDirectoryW(path, 32768);
     check(n && n < 32768); return path;
 }
-inline std::wstring spool() { return known(FOLDERID_ProgramData) + L"\\VoucherReorderSpool"; }
+inline std::wstring spool() { return program() + L"\\Spool"; }
 inline bool account_sid(const std::wstring& text) {
     PSID sid = nullptr;
     if (!ConvertStringSidToSidW(text.c_str(), &sid)) return false;

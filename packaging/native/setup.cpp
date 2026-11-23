@@ -88,7 +88,7 @@ int wmain(int argc, wchar_t** argv) {
                 vr::check(GetLastError() == ERROR_UNKNOWN_PRINT_MONITOR);
             return 0;
         }
-        vr::LockedTree spool(vr::spool(), true);
+        vr::LockedTree spool(vr::spool(), true, L"BU");
         vr::LockedTree incoming(vr::spool() + L"\\" + sid, true, sid);
         HKEY registry = nullptr;
         vr::check(RegCreateKeyExW(HKEY_LOCAL_MACHINE, key, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &registry, nullptr) == ERROR_SUCCESS);
