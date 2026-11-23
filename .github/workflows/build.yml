@@ -95,6 +95,10 @@ jobs:
         shell: powershell
         timeout-minutes: 8
         run: scripts/test_print_pages.ps1
+      - name: Probe standard-user PDF Local Port token and junction behavior
+        shell: powershell
+        timeout-minutes: 3
+        run: scripts/probe_pdf_local_port.ps1
       - name: Exercise native protected path and ACL rejection
         timeout-minutes: 2
         shell: powershell

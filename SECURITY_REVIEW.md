@@ -1,4 +1,35 @@
-# Security review — current branch, 2026-11-22
+# Security review — current branch, 2026-11-23
+
+## Microsoft Print to PDF Local Port investigation
+
+The optional virtual queue stays on **MS Publisher Imagesetter and the protected
+unique-job monitor**. The inbox v4 Microsoft Print to PDF driver rejects that
+monitor (`AddPrinterW`, stage 170, Windows error 1801 in the earlier CI prototype).
+Microsoft [documents that v4 drivers do not support non-Microsoft port
+monitors](https://learn.microsoft.com/en-us/windows-hardware/drivers/print/v4-driver-connectivity-architecture).
+The supported Local Port alternative names a **single fixed file**; Microsoft
+[describes that exact setup](https://learn.microsoft.com/en-us/troubleshoot/windows-server/printing/print-to-file-without-user-intervention)
+as saving every job to the configured path. In this app, a fixed file would
+overwrite or collide with another job while the watcher is stopped or two jobs
+arrive together, reopening CR-04. Changing a queue's port between jobs cannot
+bind arbitrary QuickBooks submissions to distinct paths across offline periods.
+`PORTPROMPT:` gives a per-job filename dialog, but loses the unattended virtual
+queue behavior. The existing PDF Inbox mode already supports that manual path.
+
+CR-02 also cannot be closed by *assuming* Local Port writes run as the submitting
+user. Microsoft's [Print Services security overview](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-prsod/340e969b-3243-4116-bf79-47c45bb40264)
+describes user impersonation for processing external resources, but does not
+specify the token used by this driver/monitor when it opens a file port. The new
+`scripts/probe_pdf_local_port.ps1` is a **diagnostic**, run by Windows CI after
+the existing v4 vector-output test: it submits from a real standard-user account,
+records the PDF file owner's SID, then redirects the same path through a junction
+to a directory writable only by SYSTEM/administrators and reports whether a file
+appears there. It does not change the installed queue and does not gate this
+Imagesetter design. The results have **not yet been observed**; this Linux host
+cannot establish Windows token or junction behavior. A user-owned PDF and a
+blocked junction would support the narrow token hypothesis on that runner, but
+would still leave the fixed-filename CR-04 failure. No v4 virtual-printer change
+is shipped on the basis of this probe.
 
 ## Follow-up implementation status
 
