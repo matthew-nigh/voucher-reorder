@@ -261,6 +261,25 @@ def test_installer_setup_exception_records_failure_without_losing_pdf_mode(tmp_p
     assert (tmp_path / "printer-setup-code.txt").read_text() == "12"
 
 
+def test_pdf_virtual_setup_failure_is_visible_to_acceptance_runner(tmp_path, monkeypatch):
+    source = Path(__file__).parents[1] / "packaging/mode_setup.py"
+    spec = importlib.util.spec_from_file_location("test_pdf_mode_setup", source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    save(tmp_path / "settings.json", config())
+    monkeypatch.setattr(module, "data_dir", lambda: tmp_path)
+    monkeypatch.setattr(module, "stop_worker", lambda *args: None)
+    monkeypatch.setattr(module, "powershell", lambda *args: ["fake-command"])
+    monkeypatch.setattr(module, "register_user", lambda: None)
+    monkeypatch.setattr(module.subprocess, "CREATE_NO_WINDOW", 0, raising=False)
+    monkeypatch.setattr(
+        module.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(returncode=16200005)
+    )
+    assert module.main("pdf-printer", ui=True) == 1
+    assert load(tmp_path / "settings.json").mode == "pdf"
+    assert (tmp_path / "printer-setup-code.txt").read_text() == "16200005"
+
+
 @pytest.mark.parametrize("outcome", [0, 1, "timeout"])
 def test_removal_reports_failure_and_preserves_retry_marker(tmp_path, monkeypatch, outcome):
     source = Path(__file__).parents[1] / "packaging/mode_setup.py"

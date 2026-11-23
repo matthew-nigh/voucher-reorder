@@ -11,7 +11,11 @@ $outputFolder = Join-Path $data ('CI-PDF-burst-' + $run)
 $processes = [Collections.Generic.List[object]]::new()
 try {
     & $python $mode pdf-printer --ui
-    if ($LASTEXITCODE) { throw 'PDF virtual printer setup failed' }
+    $configured = Get-Content (Join-Path $data 'settings.json') -Raw | ConvertFrom-Json
+    if ($LASTEXITCODE -or $configured.mode -ne 'virtual' -or $configured.virtual_variant -ne 'print_to_pdf') {
+        $code = Get-Content (Join-Path $data 'printer-setup-code.txt') -ErrorAction SilentlyContinue
+        throw "PDF virtual printer setup failed; helper code=$code"
+    }
     & $python -c "from voucher_reorder.config import *; from dataclasses import replace; p=data_dir()/'settings.json'; save(p,replace(load(p),output_mode='pdf',output_folder=str(data_dir()/'CI-PDF-burst-$run')))"
     if ($LASTEXITCODE) { throw 'PDF burst settings failed' }
     & $python $app register

@@ -40,7 +40,7 @@ def main(action, ui=False):
             check=False,
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
-        if action == "setup" and result.returncode:
+        if action in ("setup", "pdf-printer") and result.returncode:
             (root / "printer-setup-code.txt").write_text(str(result.returncode), encoding="ascii")
         if not remove and result.returncode == 0:
             installed_marker.touch()
@@ -78,10 +78,10 @@ def main(action, ui=False):
             print(detail)
         else:
             message(detail)
-        return 1 if remove and result.returncode else 0
+        return 1 if result.returncode and (remove or action == "pdf-printer") else 0
     except Exception:
         # No elevation/setup failure may make the no-admin application unusable.
-        if action == "setup":
+        if action in ("setup", "pdf-printer"):
             (root / "printer-setup-code.txt").write_text("12", encoding="ascii")
         save(config, replace(settings, mode="pdf"))
         initialized.touch()
@@ -94,7 +94,7 @@ def main(action, ui=False):
             print(detail)
         else:
             message(detail)
-        return 1 if remove else 0
+        return 1 if remove or action == "pdf-printer" else 0
 
 
 if __name__ == "__main__":

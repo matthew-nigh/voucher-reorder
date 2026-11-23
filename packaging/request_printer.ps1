@@ -8,12 +8,13 @@ try {
     if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) { exit 11 }
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
-    if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        # A runner or administrator may already have a full elevated token.
-        # The manifest and native protected_image check still apply.
-        & $helper $Action $sid
-        exit $LASTEXITCODE
+    # Start-Process preserves the helper's numeric stage/error code. Direct
+    # invocation can turn its stderr into a terminating PowerShell error and
+    # replace the useful code with this script's generic catch result.
+    $start = @{ FilePath=$helper; ArgumentList=@($Action,$sid); WorkingDirectory=[Environment]::SystemDirectory; Wait=$true; PassThru=$true }
+    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        $start.Verb = 'RunAs'
     }
-    $process = Start-Process -FilePath $helper -ArgumentList @($Action,$sid) -WorkingDirectory ([Environment]::SystemDirectory) -Verb RunAs -Wait -PassThru
+    $process = Start-Process @start
     exit $process.ExitCode
 } catch { exit 10 }

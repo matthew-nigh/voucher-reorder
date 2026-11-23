@@ -29,7 +29,10 @@ static void add_local_port(const std::wstring& path) {
     BYTE output[1]{};
     vr::check(XcvDataW(raw, L"AddPort", reinterpret_cast<PBYTE>(const_cast<wchar_t*>(path.c_str())),
         static_cast<DWORD>((path.size() + 1) * sizeof(wchar_t)), output, sizeof(output), &needed, &status));
-    vr::check(status == ERROR_SUCCESS || status == ERROR_ALREADY_EXISTS);
+    if (status != ERROR_SUCCESS && status != ERROR_ALREADY_EXISTS) {
+        SetLastError(status);
+        vr::check(false);
+    }
     DWORD bytes = 0, count = 0;
     EnumPortsW(nullptr, 2, nullptr, 0, &bytes, &count);
     vr::check(bytes && bytes < 16 * 1024 * 1024 && GetLastError() == ERROR_INSUFFICIENT_BUFFER);
@@ -149,8 +152,10 @@ int wmain(int argc, wchar_t** argv) {
             if (!AddMonitorW(nullptr, 2, reinterpret_cast<LPBYTE>(&monitorInfo)))
                 vr::check(GetLastError() == ERROR_PRINT_MONITOR_ALREADY_INSTALLED);
         } else {
+            stage = 161;
             selectedPort = pdf_path(sid);
             selectedDriver = L"Microsoft Print To PDF";
+            stage = 162;
             add_local_port(selectedPort);
         }
         vr::Descriptor security(L"O:BAG:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;SWRC;;;" + sid + L")(A;OIIO;GA;;;" + sid + L")");
@@ -162,7 +167,7 @@ int wmain(int argc, wchar_t** argv) {
         stage = 170;
         printer = AddPrinterW(nullptr, 2, reinterpret_cast<LPBYTE>(&info)); vr::check(printer != nullptr);
         stage = 180;
-        try { configure_paper(printer); }
+        try { if (action == L"install") configure_paper(printer); }
         catch (...) { DeletePrinter(printer); ClosePrinter(printer); throw; }
         ClosePrinter(printer);
         return 0;
