@@ -36,12 +36,12 @@ static std::wstring pdf_path(const std::wstring& sid) {
     return incoming + L"\\virtual.pdf";
 }
 static bool local_port_exists(const std::wstring& path) {
-    // This protected key is owned by Windows' Local Port monitor. A value with
-    // this exact name proves monitor ownership without enumerating unrelated
-    // monitors, one of which can report invalid data while being retired.
+    // LOCALMON stores its ports in the legacy Windows NT Ports key, not under
+    // Control\Print\Monitors\Local Port\Ports. A value with this exact name
+    // proves ownership without relying on a localized EnumPorts monitor name.
     HKEY registry = nullptr;
     auto status = RegOpenKeyExW(HKEY_LOCAL_MACHINE,
-        L"SYSTEM\\CurrentControlSet\\Control\\Print\\Monitors\\Local Port\\Ports",
+        L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Ports",
         0, KEY_QUERY_VALUE, &registry);
     if (status == ERROR_FILE_NOT_FOUND) return false;
     if (status != ERROR_SUCCESS) { SetLastError(status); vr::check(false); }
