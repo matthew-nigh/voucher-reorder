@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Native acceptance harness. Never installed with the privileged helper.
 #include "secure.hpp"
+#include <winspool.h>
 #include <iostream>
 
 static void reject(const std::wstring& path) {
@@ -8,11 +9,36 @@ static void reject(const std::wstring& path) {
     try { vr::LockedTree tree(path); } catch (...) { refused = true; }
     vr::check(refused);
 }
+static void check_port(const std::wstring& port, const wchar_t* monitor, bool expected) {
+    DWORD bytes = 0, count = 0;
+    EnumPortsW(nullptr, 2, nullptr, 0, &bytes, &count);
+    vr::check(bytes && bytes < 16 * 1024 * 1024 && GetLastError() == ERROR_INSUFFICIENT_BUFFER);
+    std::vector<BYTE> buffer(bytes);
+    vr::check(EnumPortsW(nullptr, 2, buffer.data(), bytes, &bytes, &count));
+    auto entries = reinterpret_cast<PORT_INFO_2W*>(buffer.data());
+    bool found = false;
+    for (DWORD i = 0; i < count; ++i) {
+        if (entries[i].pPortName && !_wcsicmp(entries[i].pPortName, port.c_str())) {
+            vr::check(!found && (!monitor || (entries[i].pMonitorName &&
+                !_wcsicmp(entries[i].pMonitorName, monitor))));
+            found = true;
+        }
+    }
+    vr::check(found == expected);
+}
 int wmain(int argc, wchar_t** argv) {
     const wchar_t* stage = L"arguments";
     try {
         if (argc == 3 && std::wstring(argv[1]) == L"--reject") {
             stage = L"reject untrusted path"; reject(argv[2]); return 0;
+        }
+        if (argc == 4 && std::wstring(argv[1]) == L"--port") {
+            stage = L"verify port and monitor with Win32 EnumPorts";
+            check_port(argv[2], argv[3], true); return 0;
+        }
+        if (argc == 3 && std::wstring(argv[1]) == L"--port-absent") {
+            stage = L"verify retired port with Win32 EnumPorts";
+            check_port(argv[2], nullptr, false); return 0;
         }
         vr::check(argc == 1);
         stage = L"canonical SID validation";

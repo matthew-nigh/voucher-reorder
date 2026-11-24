@@ -4,6 +4,7 @@ $installer = Join-Path $PSScriptRoot '..\dist\VoucherReorder-0.2.6-Setup.exe'
 $appRoot = Join-Path $env:LOCALAPPDATA 'Programs\Voucher Reorder'
 $data = Join-Path $env:LOCALAPPDATA 'VoucherReorder'
 $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$portProbe = Join-Path $PSScriptRoot '..\build\printer\PrinterSecurityTest.exe'
 function Assert-Mode($variant, $driver, $port) {
     $settings = Get-Content (Join-Path $data 'settings.json') -Raw | ConvertFrom-Json
     if ($settings.mode -ne $(if ($variant) { 'virtual' } else { 'pdf' }) -or
@@ -13,10 +14,15 @@ function Assert-Mode($variant, $driver, $port) {
         $detail = Get-Content (Join-Path $data 'printer-setup-error.txt') -ErrorAction SilentlyContinue
         throw "Wrong printer state: expected $driver on $port; detail=$detail"
     }
-    if ($variant -and -not (Get-PrinterPort -Name $port -ErrorAction Stop)) { throw "Port was not published: $port" }
+    if ($variant) {
+        $monitor = if ($variant -eq 'imagesetter') { 'Voucher Reorder Secure Port' } else { 'Local Port' }
+        & $portProbe --port $port $monitor
+        if ($LASTEXITCODE) { throw "Port was not published by ${monitor}: $port" }
+    }
     if (-not $variant -and $printer) { throw 'Handoff retained the optional printer' }
-    if (-not $variant -and (Get-PrinterPort -Name "VoucherReorder:$sid" -ErrorAction SilentlyContinue)) {
-        throw 'Handoff retained the Imagesetter port'
+    if (-not $variant) {
+        & $portProbe --port-absent "VoucherReorder:$sid"
+        if ($LASTEXITCODE) { throw 'Handoff retained the Imagesetter port' }
     }
 }
 function Change-Mode($action) {

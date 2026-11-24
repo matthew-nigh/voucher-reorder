@@ -87,7 +87,8 @@ kernel waits. The active document supervisor still enforces resource deadlines.
    per-user `request_printer.ps1`/old `printer.ps1` fixture and verify the installed
    helper never reads it. Standard users must be unable to modify the installed helper,
    monitor, protected spool directories or another user's completed PDFs.
-3. Inspect `Get-Printer` and `Get-PrinterPort`: MS Publisher Imagesetter,
+3. Inspect `Get-Printer` and the native Win32 `EnumPorts` check in
+   `scripts/test_mode_switches.ps1`: MS Publisher Imagesetter,
    `VoucherReorder:<SID>`, monitor **Voucher Reorder Secure Port**, unshared and
    owner-restricted. The default printer and unrelated queues must not change.
    Missing MS Publisher Imagesetter must leave usable PDF mode; the administrator
