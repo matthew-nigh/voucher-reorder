@@ -51,10 +51,11 @@ static void add_local_port(const std::wstring& path) {
     HANDLE raw = nullptr;
     vr::check(OpenPrinterW(const_cast<LPWSTR>(L",XcvMonitor Local Port"), &raw, &defaults));
     std::unique_ptr<void, decltype(&ClosePrinter)> xcv(raw, ClosePrinter);
-    DWORD needed = 0, status = ERROR_SUCCESS;
-    BYTE output[1]{};
+    DWORD status = ERROR_SUCCESS;
+    // LOCALMON AddPort has no output. A supplied output buffer is rejected as
+    // invalid data on supported Windows spoolers.
     vr::check(XcvDataW(raw, L"AddPort", reinterpret_cast<PBYTE>(const_cast<wchar_t*>(path.c_str())),
-        static_cast<DWORD>((path.size() + 1) * sizeof(wchar_t)), output, sizeof(output), &needed, &status));
+        static_cast<DWORD>((path.size() + 1) * sizeof(wchar_t)), nullptr, 0, nullptr, &status));
     if (status != ERROR_SUCCESS && !local_port_exists(path)) {
         SetLastError(status);
         vr::check(false);
