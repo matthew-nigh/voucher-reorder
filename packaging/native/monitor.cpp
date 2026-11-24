@@ -73,11 +73,17 @@ static BOOL WINAPI enum_ports(HANDLE, LPWSTR, DWORD level, LPBYTE data, DWORD si
         constexpr DWORD alignment = alignof(PORT_INFO_2W);
         *needed = (content + alignment - 1) & ~(alignment - 1);
         if (size < *needed) { SetLastError(ERROR_INSUFFICIENT_BUFFER); return FALSE; }
-        ZeroMemory(data, *needed);
-        auto cursor = reinterpret_cast<wchar_t*>(data + structure);
+        ZeroMemory(data, structure);
+        // The spooler shares one output buffer across monitors. It advances
+        // the structure area from the front and packs strings from the end of
+        // cbBuf, not from the end of pcbNeeded. Putting strings immediately
+        // after our structure corrupts that shared layout (EnumPorts error 13).
+        auto cursor = data + (size & ~DWORD{1});
         auto put = [&](const std::wstring& value) {
-            auto dest = cursor; memcpy(dest, value.c_str(), (value.size() + 1) * sizeof(wchar_t));
-            cursor += value.size() + 1; return dest;
+            auto bytes = (value.size() + 1) * sizeof(wchar_t);
+            cursor -= bytes;
+            memcpy(cursor, value.c_str(), bytes);
+            return reinterpret_cast<wchar_t*>(cursor);
         };
         if (level == 1) reinterpret_cast<PORT_INFO_1W*>(data)->pName = put(name);
         else {
