@@ -7,8 +7,11 @@ New-Item -ItemType Directory (Split-Path $fake) -Force | Out-Null
 [IO.File]::WriteAllBytes($fake, [byte[]]@(77,90))
 try {
     $env:VOUCHER_REORDER_SETUP_IMAGE = $fake
-    & (Join-Path $PSHOME 'powershell.exe') -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot '..\packaging\request_printer.ps1') -Action install -Installer
-    if ($LASTEXITCODE -ne 11) { throw "AppData elevation target was not refused: $LASTEXITCODE" }
+    $script = (Resolve-Path (Join-Path $PSScriptRoot '..\packaging\request_printer.ps1')).Path
+    $arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $script + '" -Action install -Installer'
+    $process = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList $arguments -Wait -PassThru
+    if ($process.ExitCode -ne 11) { throw "AppData elevation target was not refused: $($process.ExitCode)" }
+    Write-Output 'PASS: AppData Setup image rejected before elevation (code 11)'
 } finally {
     Remove-Item Env:\VOUCHER_REORDER_SETUP_IMAGE -ErrorAction SilentlyContinue
     Remove-Item $fake -ErrorAction SilentlyContinue
