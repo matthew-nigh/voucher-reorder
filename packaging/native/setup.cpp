@@ -13,30 +13,18 @@ static std::wstring pdf_path(const std::wstring& sid) {
     const auto profileKey = L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList\\" + sid;
     wchar_t profile[32768]; DWORD bytes = sizeof(profile);
     DWORD type = 0;
-    vr::check(RegGetValueW(HKEY_LOCAL_MACHINE, profileKey.c_str(), L"ProfileImagePath",
-        RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ, &type, profile, &bytes) == ERROR_SUCCESS);
+    auto result = RegGetValueW(HKEY_LOCAL_MACHINE, profileKey.c_str(), L"ProfileImagePath",
+        RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ, &type, profile, &bytes);
+    if (result != ERROR_SUCCESS) { SetLastError(result); vr::check(false); }
     wchar_t expanded[32768];
     DWORD length = ExpandEnvironmentStringsW(profile, expanded, 32768);
     vr::check(length && length < 32768);
-    return std::wstring(expanded) + L"\\AppData\\Local\\VoucherReorder\\Incoming\\virtual.pdf";
+    std::wstring incoming = std::wstring(expanded) + L"\\AppData\\Local\\VoucherReorder\\Incoming";
+    DWORD attributes = GetFileAttributesW(incoming.c_str());
+    vr::check(attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY));
+    return incoming + L"\\virtual.pdf";
 }
-static void add_local_port(const std::wstring& path) {
-    PRINTER_DEFAULTSW defaults{nullptr, nullptr, SERVER_ACCESS_ADMINISTER};
-    HANDLE raw = nullptr;
-    vr::check(OpenPrinterW(const_cast<LPWSTR>(L",XcvMonitor Local Port"), &raw, &defaults));
-    std::unique_ptr<void, decltype(&ClosePrinter)> xcv(raw, ClosePrinter);
-    DWORD needed = 0, status = ERROR_SUCCESS;
-    BYTE output[1]{};
-    vr::check(XcvDataW(raw, L"AddPort", reinterpret_cast<PBYTE>(const_cast<wchar_t*>(path.c_str())),
-        static_cast<DWORD>((path.size() + 1) * sizeof(wchar_t)), output, sizeof(output), &needed, &status));
-    if (status != ERROR_SUCCESS && status != ERROR_ALREADY_EXISTS) {
-        SetLastError(status);
-        vr::check(false);
-    }
-    // The successful Xcv command ran on the Local Port monitor itself. Its
-    // new port can appear in EnumPorts only after the spooler publishes it.
-    // An existing name still needs a monitor ownership check.
-    if (status == ERROR_SUCCESS) return;
+static bool local_port_exists(const std::wstring& path) {
     DWORD bytes = 0, count = 0;
     for (int attempt = 0; attempt < 20; ++attempt) {
         bytes = count = 0;
@@ -48,13 +36,29 @@ static void add_local_port(const std::wstring& path) {
         for (DWORD i = 0; i < count; ++i) {
             if (!_wcsicmp(ports[i].pPortName, path.c_str())) {
                 vr::check(ports[i].pMonitorName && !_wcsicmp(ports[i].pMonitorName, L"Local Port"));
-                return;
+                return true;
             }
         }
         Sleep(100);
     }
-    SetLastError(ERROR_NOT_FOUND);
-    vr::check(false);
+    return false;
+}
+static void add_local_port(const std::wstring& path) {
+    // Reinstalls leave the Local Port in place. Query ownership before AddPort;
+    // duplicate status varies across Windows spooler implementations.
+    if (local_port_exists(path)) return;
+    PRINTER_DEFAULTSW defaults{nullptr, nullptr, SERVER_ACCESS_ADMINISTER};
+    HANDLE raw = nullptr;
+    vr::check(OpenPrinterW(const_cast<LPWSTR>(L",XcvMonitor Local Port"), &raw, &defaults));
+    std::unique_ptr<void, decltype(&ClosePrinter)> xcv(raw, ClosePrinter);
+    DWORD needed = 0, status = ERROR_SUCCESS;
+    BYTE output[1]{};
+    vr::check(XcvDataW(raw, L"AddPort", reinterpret_cast<PBYTE>(const_cast<wchar_t*>(path.c_str())),
+        static_cast<DWORD>((path.size() + 1) * sizeof(wchar_t)), output, sizeof(output), &needed, &status));
+    if (status != ERROR_SUCCESS && !local_port_exists(path)) {
+        SetLastError(status);
+        vr::check(false);
+    }
 }
 static std::vector<BYTE> printer_info(HANDLE printer) {
     DWORD bytes = 0; GetPrinterW(printer, 2, nullptr, 0, &bytes);
@@ -120,7 +124,7 @@ int wmain(int argc, wchar_t** argv) {
         if (OpenPrinterW(const_cast<LPWSTR>(name), &printer, &defaults)) {
             auto data = printer_info(printer); auto info = reinterpret_cast<PRINTER_INFO_2W*>(data.data());
             bool ours = info->pComment && owner == info->pComment && info->pDriverName &&
-                (std::wstring(info->pDriverName) == driver || std::wstring(info->pDriverName) == L"Microsoft Print To PDF");
+                (!_wcsicmp(info->pDriverName, driver) || !_wcsicmp(info->pDriverName, L"Microsoft Print To PDF"));
             if (!ours) { ClosePrinter(printer); vr::check(false); }
             // Re-create to remove sharing/retention and migrate the old writable port.
             try { remove_queue(printer); } catch (...) { ClosePrinter(printer); throw; }
@@ -170,7 +174,9 @@ int wmain(int argc, wchar_t** argv) {
         PRINTER_INFO_2W info{};
         info.pPrinterName = const_cast<LPWSTR>(name); info.pPortName = const_cast<LPWSTR>(selectedPort.c_str());
         info.pDriverName = const_cast<LPWSTR>(selectedDriver); info.pComment = const_cast<LPWSTR>(owner.c_str());
-        info.pPrintProcessor = const_cast<LPWSTR>(L"winprint"); info.pDatatype = const_cast<LPWSTR>(L"RAW");
+        // Let the v4 PDF driver choose its supported datatype. Imagesetter uses RAW.
+        info.pPrintProcessor = const_cast<LPWSTR>(L"winprint");
+        if (action == L"install") info.pDatatype = const_cast<LPWSTR>(L"RAW");
         info.pSecurityDescriptor = security.value; info.Attributes = PRINTER_ATTRIBUTE_LOCAL;
         stage = 170;
         printer = AddPrinterW(nullptr, 2, reinterpret_cast<LPBYTE>(&info)); vr::check(printer != nullptr);

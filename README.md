@@ -128,8 +128,8 @@ There are no background polling loops, timers, heartbeats, or periodic process
 launches. PDF parsing and printing run only for a job; the processor drains the
 queue and exits. Job status reads persisted records, not a heartbeat.
 
-The virtual Setup choice elevates an installer-embedded native bootstrap from the
-user's download location. It deploys the helper and monitor, verifies their bytes,
+The virtual Setup choice relaunches the downloaded Setup.exe with administrator
+approval. Its embedded native code deploys the helper and monitor, verifies their bytes,
 then runs the protected helper for the selected printer in the same elevated pass.
 Later Settings actions elevate `%ProgramFiles%\VoucherReorderPrinter\PrinterSetup.exe`
 directly. No per-user PowerShell script runs elevated. The monitor DLL lives in System32 as required
@@ -138,6 +138,9 @@ writable or redirected paths are
 refused rather than having their ACLs repaired. Distribution is still unsigned;
 review the download's origin before approving UAC. Code signing is needed for
 strong publisher authentication.
+If optional printer setup fails, Settings and Setup show its stage and Windows error.
+The same diagnosis is saved at `%LOCALAPPDATA%\VoucherReorder\printer-setup-error.txt`;
+`printer-setup-code.txt` retains the numeric code for automated checks.
 
 The owner-restricted, unshared **Voucher Reorder** queue uses the built-in
 **MS Publisher Imagesetter** driver and the native **Voucher Reorder Secure Port**
@@ -247,7 +250,7 @@ The script packages official x64 Windows binaries from SHA-256-pinned downloads 
 `packaging/dependencies.json`; it does not claim to cross-compile those upstream
 programs. Building the protected printer package requires the x64 MSVC compiler
 and Windows SDK on Windows, or `g++-mingw-w64-x86-64-posix` on Linux.
-`--stage-only` prepares files and the embedded native bootstrap; `--version 0.2.6` overrides the packaging
+`--stage-only` prepares files and the embedded native Setup resources; `--version 0.2.6` overrides the packaging
 version for upgrade tests (no tag/release is created). Installations need no network
 in PDF mode. Virtual setup uses the inbox Windows v3 MS Publisher Imagesetter driver;
 policy or missing-driver failures fall back to PDF mode.

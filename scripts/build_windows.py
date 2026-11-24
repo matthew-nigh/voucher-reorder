@@ -171,7 +171,7 @@ def main():
     (dist / f"VoucherReorder-{version}-PrinterDeploy.exe").unlink(missing_ok=True)
     from build_printer import build
 
-    shutil.copy2(build(ROOT / "build/printer"), stage / "packaging/PrinterBootstrap.exe")
+    build(ROOT / "build/printer")
     # Source distribution uses an explicit allowlist: no local user data, credentials, or downloads outside pins.
     with zipfile.ZipFile(
         dist / f"VoucherReorder-{version}-sources.zip", "w", zipfile.ZIP_DEFLATED
@@ -188,15 +188,17 @@ def main():
         archive.write(stage / "BUILD_INFO.json", "BUILD_INFO.json")
     if not args.stage_only:
         installer = dist / f"VoucherReorder-{version}-Setup.exe"
+        payload = ROOT / "build/printer/PerUserInstaller.exe"
         subprocess.run(
             [
                 compiler,
                 f"{prefix}DSTAGE={stage}",
-                f"{prefix}DOUTPUT={installer}",
+                f"{prefix}DOUTPUT={payload}",
                 str(ROOT / "packaging/installer.nsi"),
             ],
             check=True,
         )
+        shutil.copy2(build(ROOT / "build/printer", payload), installer)
     with (dist / "SHA256SUMS.txt").open("w") as output:
         for path in (
             dist / f"VoucherReorder-{version}-Setup.exe",

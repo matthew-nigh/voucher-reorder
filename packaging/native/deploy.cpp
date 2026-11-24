@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Installer-embedded bootstrap: deploy verified resources, then configure the printer.
+// The distributed Setup image: run the per-user NSIS UI or perform its elevated action.
 #include "secure.hpp"
+#include <shellapi.h>
 #include <cstring>
 #include <iostream>
 #include <vector>
@@ -30,10 +31,40 @@ static void deploy(WORD id, const std::wstring& path) {
     std::vector<BYTE> copy(size); DWORD read;
     vr::check(ReadFile(file.value, copy.data(), size, &read, nullptr) && read == size && !memcmp(bytes, copy.data(), size));
 }
-int wmain(int argc, wchar_t** argv) {
+static int installer(int argc, wchar_t** argv) {
+    wchar_t self[32768];
+    vr::check(GetModuleFileNameW(nullptr, self, 32768) > 0);
+    vr::check(SetEnvironmentVariableW(L"VOUCHER_REORDER_SETUP_IMAGE", self));
+    wchar_t temporary[MAX_PATH], filename[MAX_PATH];
+    vr::check(GetTempPathW(MAX_PATH, temporary) && GetTempFileNameW(temporary, L"VRI", 0, filename));
+    auto resource = FindResourceW(nullptr, MAKEINTRESOURCEW(103), RT_RCDATA);
+    vr::check(resource != nullptr);
+    auto size = SizeofResource(nullptr, resource);
+    auto bytes = LockResource(LoadResource(nullptr, resource));
+    vr::check(size && bytes);
+    {
+        vr::Handle file(CreateFileW(filename, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr));
+        vr::check(file.value != INVALID_HANDLE_VALUE);
+        DWORD written = 0;
+        vr::check(WriteFile(file.value, bytes, size, &written, nullptr) && written == size);
+    }
+    std::wstring command = L"\"" + std::wstring(filename) + L"\"";
+    for (int i = 1; i < argc; ++i) command += L" " + std::wstring(argv[i]);
+    std::vector<wchar_t> args(command.begin(), command.end()); args.push_back(0);
+    STARTUPINFOW start{}; start.cb = sizeof(start); PROCESS_INFORMATION process{};
+    vr::check(CreateProcessW(filename, args.data(), nullptr, nullptr, FALSE, 0,
+        nullptr, nullptr, &start, &process));
+    vr::Handle thread(process.hThread), child(process.hProcess);
+    vr::check(WaitForSingleObject(child.value, INFINITE) == WAIT_OBJECT_0);
+    DWORD code = 0; vr::check(GetExitCodeProcess(child.value, &code));
+    DeleteFileW(filename);
+    return static_cast<int>(code);
+}
+static int run(int argc, wchar_t** argv) {
     try {
-        vr::check(argc == 3);
-        std::wstring action(argv[1]), sid(argv[2]);
+        if (argc < 2 || std::wstring(argv[1]) != L"/elevated-printer") return installer(argc, argv);
+        vr::check(argc == 4);
+        std::wstring action(argv[2]), sid(argv[3]);
         vr::check((action == L"install" || action == L"install-pdf") && vr::account_sid(sid));
         vr::LockedTree directory(vr::program(), true, L"BU");
         deploy(101, vr::program() + L"\\PrinterSetup.exe");
@@ -41,7 +72,7 @@ int wmain(int argc, wchar_t** argv) {
         // with the same no-reparse/ACL checks and embedded-byte verification.
         vr::LockedTree system(vr::system_directory());
         deploy(102, vr::system_directory() + L"\\VoucherReorderPort.dll");
-        // The bootstrap may be launched from Downloads. Only the fixed, verified
+        // Setup may be launched from Downloads. Only the fixed, verified
         // Program Files executable is used for the privileged printer operation.
         std::wstring command = L"\"" + vr::program() + L"\\PrinterSetup.exe\" " + action + L" " + sid;
         std::vector<wchar_t> mutableCommand(command.begin(), command.end());
@@ -57,4 +88,12 @@ int wmain(int argc, wchar_t** argv) {
         std::wcerr << L"Deployment refused: unsafe destination, changed installed bytes, or insufficient privileges. No ACLs were repaired.\n";
         return 1;
     }
+}
+int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
+    int argc = 0;
+    auto argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (!argv) return 1;
+    int result = run(argc, argv);
+    LocalFree(argv);
+    return result;
 }

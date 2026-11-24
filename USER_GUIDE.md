@@ -73,6 +73,10 @@ printer needs UAC; PDF mode does not. During setup, “Setting up the Voucher Re
 printer...” and a moving progress bar appear. The mode buttons are disabled while
 it runs, and a success/failure message appears when finished. One UAC prompt is
 expected after the helper is installed; declining it leaves PDF handoff available. **Uninstall:** use Windows Settings → Apps.
+First-time virtual setup prompts for the downloaded Setup.exe. Later mode changes
+prompt for `%ProgramFiles%\VoucherReorderPrinter\PrinterSetup.exe`. If setup fails,
+read the stage and Windows error shown in Settings or
+`%LOCALAPPDATA%\VoucherReorder\printer-setup-error.txt`.
 Declining UAC can leave the optional printer installed but removes the per-user app.
 The protected helper stays installed for administrator maintenance. Pending virtual
 jobs also remain under `%ProgramData%\VoucherReorderSpool\<your SID>`; have an

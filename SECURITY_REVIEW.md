@@ -4,21 +4,19 @@
 
 The only distributed executable is `VoucherReorder-0.2.6-Setup.exe`. PDF handoff
 installs per user without elevation. Selecting Imagesetter or Microsoft Print to
-PDF runs an installer-embedded native bootstrap with administrator approval. It
+PDF relaunches the Setup.exe image with administrator approval. Its native code
 deploys its embedded `PrinterSetup.exe` into Program Files and monitor DLL into
 System32, verifies destination ACLs, paths and bytes, then invokes the protected
 helper for the selected variant in the same elevated pass. Settings later elevates
 only that installed helper. No user-writable PowerShell script runs elevated.
 
-The elevated bootstrap is extracted and launched from a user-writable app
-deployment, and Setup itself normally runs from Downloads. This is standard
-installer practice, but it lets the installing user influence the executable
+Setup itself normally runs from Downloads. It lets the installing user influence the executable
 presented for UAC before approval. Code signing and publisher verification are
 needed to authenticate that boundary; this build is **unsigned**. Embedded byte
 checks protect destination integrity against replacement and redirection, but
-do not authenticate the bootstrap's origin. Release provenance and native UAC
-qualification remain important. There is no separate administrator staging or
-second executable for users to verify and run.
+do not authenticate Setup's origin. Release provenance and native UAC
+qualification remain important. The per-user NSIS payload and Python runtime
+are never elevated; after deployment, Settings elevates only the protected helper.
 
 ## Selectable Microsoft Print to PDF Local Port variant
 
@@ -89,8 +87,8 @@ this retention guarantee. A daily scan does not impose a total byte budget.
 
 CR-01, CR-02 and the CR-04 filename remainder are **fixed in source** by the
 protected native printer components in this follow-up; Windows acceptance remains
-pending. The single Setup executable embeds a native bootstrap. A virtual choice
-elevates it once to deploy verified helper/monitor bytes with protected ACLs and
+pending. The single Setup executable embeds native deployment code. A virtual choice
+elevates Setup once to deploy verified helper/monitor bytes with protected ACLs and
 configure the selected printer. Settings elevates the installed `PrinterSetup.exe`
 directly. The helper refuses execution outside its protected installed location.
 
@@ -211,10 +209,10 @@ inside another user-writable script is insufficient. Until resolved, favor PDF
 Inbox mode on machines where standard users must not influence elevated code.
 **Follow-up status: fixed in source.** See `packaging/native/deploy.cpp`,
 `setup.cpp`, `secure.hpp`, and `packaging/request_printer.ps1`. Initial deployment
-uses the installer-embedded bootstrap for first-time deployment. Deployed bytes
+uses the Setup.exe image for first-time deployment. Deployed bytes
 are compared with embedded resources, installed code paths are protected and
 checked, and later UAC approves the installed helper image itself. The first
-bootstrap runs from user-writable storage; unsigned provenance and native UAC
+Setup may run from Downloads; unsigned provenance and native UAC
 qualification remain residual risks, not claimed fixed here.
 
 ### CR-02 — High, conditional: privileged fixed-port output follows mutable paths

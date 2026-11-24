@@ -69,7 +69,7 @@ kernel waits. The active document supervisor still enforces resource deadlines.
 
 1. Run the single `VoucherReorder-0.2.6-Setup.exe` and choose **Virtual printer
    with Imagesetter (recommended)**. Setup requests UAC once. Its embedded native
-   bootstrap runs elevated from the download location, installs helper bytes into
+   image runs elevated from the download location and installs helper bytes into
    `%ProgramFiles%\VoucherReorderPrinter`
    and the monitor into `%SystemRoot%\System32\VoucherReorderPort.dll` as required
    by AddMonitor, with admin/SYSTEM write and Users read/execute ACLs, and verifies
@@ -78,8 +78,10 @@ kernel waits. The active document supervisor still enforces resource deadlines.
    code requires separate administrator maintenance after reconciling queues,
    removing the monitor, and removing the protected old files. No automatic
    spooler restart or privileged self-update is implemented.
-2. Enable virtual printer in Setup or Settings. Setup elevates its embedded native
-   bootstrap; later Settings actions elevate the protected **PrinterSetup.exe**.
+2. Enable virtual printer in Setup or Settings. On first install, UAC names the
+   downloaded **Setup.exe** with `/elevated-printer install <desktop SID>` (or
+   `install-pdf`). Later Settings actions elevate the protected **PrinterSetup.exe**
+   with `install`, `install-pdf`, or `remove` and the desktop SID. Handoff needs no UAC.
    Repeat with alternate-admin
    credentials: the port must use the original desktop SID. Tamper with the
    per-user `request_printer.ps1`/old `printer.ps1` fixture and verify the installed
@@ -112,6 +114,13 @@ kernel waits. The active document supervisor still enforces resource deadlines.
    restarting Spooler; an in-use monitor reports failure for admin maintenance.
    Old detached Local Port registry entries and protected files are intentionally
    left for administrator cleanup. No unrelated/shared system port is deleted.
+   Check the stage and Win32 error in the UI and in
+   `%LOCALAPPDATA%\VoucherReorder\printer-setup-error.txt`.
+8. Run `scripts/test_mode_switches.ps1`: Imagesetter → Print to PDF → handoff →
+   Print to PDF, then install Print to PDF again. Assert mode, driver and port
+   after each step, including the already-existing Local Port.
+   CI also runs `scripts/test_elevation_target.ps1` before deployment to reject
+   an AppData Setup-image path without showing UAC.
 
 These new native checks are wired into the Windows workflow but have not been
 executed in the Linux implementation environment. Do not infer UAC/ACL/driver

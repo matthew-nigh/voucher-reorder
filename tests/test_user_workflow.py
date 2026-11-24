@@ -212,7 +212,7 @@ def test_optional_elevation_success_decline_and_failure(tmp_path, monkeypatch, e
     status_file = tmp_path / "mode-status.txt"
     assert status_file.exists() == ui
     if ui:
-        assert ("blocked, declined or failed" in status_file.read_text()) == (exit_code != 0)
+        assert ("printer-setup-error.txt" in status_file.read_text()) == (exit_code != 0)
     saved = load(tmp_path / "settings.json")
     assert saved.mode == mode
     assert saved.printer == config().printer
@@ -261,7 +261,7 @@ def test_installer_setup_exception_records_failure_without_losing_pdf_mode(tmp_p
     assert (tmp_path / "printer-setup-code.txt").read_text() == "12"
 
 
-def test_installer_pdf_choice_uses_embedded_bootstrap_and_saves_variant(tmp_path, monkeypatch):
+def test_installer_pdf_choice_relaunches_setup_image_and_saves_variant(tmp_path, monkeypatch):
     source = Path(__file__).parents[1] / "packaging/mode_setup.py"
     spec = importlib.util.spec_from_file_location("test_pdf_install_mode", source)
     module = importlib.util.module_from_spec(spec)
@@ -276,9 +276,22 @@ def test_installer_pdf_choice_uses_embedded_bootstrap_and_saves_variant(tmp_path
     monkeypatch.setattr(module.sys, "argv", ["mode_setup.py", "setup-pdf", "--installer"])
     assert module.main("setup-pdf") == 0
     assert calls[0][1:3] == ("-Action", "install-pdf")
-    assert calls[0][3] == "-Bootstrap"
-    assert calls[0][4].endswith("PrinterBootstrap.exe")
+    assert calls[0][3:] == ("-Installer",)
     assert load(tmp_path / "settings.json").virtual_variant == "print_to_pdf"
+
+
+def test_elevation_targets_are_setup_image_or_protected_helper():
+    root = Path(__file__).parents[1]
+    request = (root / "packaging/request_printer.ps1").read_text()
+    mode = (root / "packaging/mode_setup.py").read_text()
+    installer = (root / "packaging/installer.nsi").read_text()
+    assert "-Bootstrap" not in request + mode + installer
+    assert "PrinterBootstrap.exe" not in request + mode + installer
+    assert "VOUCHER_REORDER_SETUP_IMAGE" in request
+    assert "-Setup.exe" in request
+    assert "LocalApplicationData" in request and "ApplicationData" in request
+    assert "PrinterSetup.exe" in request
+    assert "-Installer" in mode
 
 
 def test_pdf_virtual_setup_failure_is_visible_to_acceptance_runner(tmp_path, monkeypatch):
@@ -298,6 +311,8 @@ def test_pdf_virtual_setup_failure_is_visible_to_acceptance_runner(tmp_path, mon
     assert module.main("pdf-printer", ui=True) == 1
     assert load(tmp_path / "settings.json").mode == "pdf"
     assert (tmp_path / "printer-setup-code.txt").read_text() == "16200005"
+    assert "stage 162" in (tmp_path / "printer-setup-error.txt").read_text()
+    assert "Windows error 5" in (tmp_path / "mode-status.txt").read_text()
 
 
 @pytest.mark.parametrize("outcome", [0, 1, "timeout"])

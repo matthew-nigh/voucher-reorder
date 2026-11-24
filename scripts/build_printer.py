@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def build(output):
+def build(output, installer_payload=None):
     output = Path(output).resolve()
     output.mkdir(parents=True, exist_ok=True)
     source = ROOT / "packaging/native"
@@ -24,7 +24,7 @@ def build(output):
             subprocess.run(["x86_64-w64-mingw32-windres", str(rc), "-O", "coff", "-o", str(obj)], check=True)
         return obj
 
-    def compile_file(name, target, resources=(), dll=False):
+    def compile_file(name, target, resources=(), dll=False, gui=False):
         if os.name == "nt":
             command = [
                 "cl.exe",
@@ -56,6 +56,8 @@ def build(output):
             ]
             if dll:
                 command.append("/DLL")
+            if gui:
+                command.append("/SUBSYSTEM:WINDOWS")
         else:
             command = [
                 "x86_64-w64-mingw32-g++",
@@ -71,6 +73,7 @@ def build(output):
                 "-static-libgcc",
                 "-static-libstdc++",
                 "-shared" if dll else "-municode",
+                *(["-mwindows"] if gui else []),
                 str(source / name),
                 *map(str, resources),
                 "-o",
@@ -87,14 +90,21 @@ def build(output):
     admin = resource("admin", f'1 24 "{manifest.as_posix()}"\n')
     compile_file("setup.cpp", "PrinterSetup.exe", [admin])
     compile_file("monitor.cpp", "VoucherReorderPort.dll", dll=True)
-    embedded = resource(
-        "embedded",
-        f'101 RCDATA "{(output / "PrinterSetup.exe").as_posix()}"\n'
-        f'102 RCDATA "{(output / "VoucherReorderPort.dll").as_posix()}"\n',
-    )
-    compile_file("deploy.cpp", "PrinterBootstrap.exe", [admin, embedded])
+    if installer_payload is not None:
+        user_manifest = resource(
+            "user_manifest",
+            f'1 24 "{(source / "user.manifest").as_posix()}"\n'
+            f'1 ICON "{(ROOT / "packaging/printer.ico").as_posix()}"\n',
+        )
+        embedded = resource(
+            "embedded",
+            f'101 RCDATA "{(output / "PrinterSetup.exe").as_posix()}"\n'
+            f'102 RCDATA "{(output / "VoucherReorderPort.dll").as_posix()}"\n'
+            f'103 RCDATA "{Path(installer_payload).resolve().as_posix()}"\n',
+        )
+        compile_file("deploy.cpp", "VoucherReorderSetup.exe", [user_manifest, embedded], gui=True)
     compile_file("security_test.cpp", "PrinterSecurityTest.exe", [admin])
-    return output / "PrinterBootstrap.exe"
+    return output / "VoucherReorderSetup.exe"
 
 
 if __name__ == "__main__":

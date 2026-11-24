@@ -66,6 +66,9 @@ jobs:
           }
       - name: Build installer and corresponding source
         run: python scripts/build_windows.py
+      - name: Refuse AppData elevation targets before helper deployment
+        shell: powershell
+        run: scripts/test_elevation_target.ps1
       - name: Verify single-installer artifact set
         shell: powershell
         run: |
@@ -127,6 +130,10 @@ jobs:
         shell: powershell
         timeout-minutes: 6
         run: scripts/test_provisioning.ps1 -Installer upgrade-baseline/dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.6-Setup.exe
+      - name: Switch Imagesetter, Print to PDF, handoff, and repeat the PDF install
+        shell: powershell
+        timeout-minutes: 6
+        run: scripts/test_mode_switches.ps1
       - name: Exercise selectable Print to PDF Local Port burst
         shell: powershell
         timeout-minutes: 6
