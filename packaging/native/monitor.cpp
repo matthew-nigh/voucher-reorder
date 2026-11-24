@@ -12,6 +12,14 @@
 
 static const wchar_t* monitorName = L"Voucher Reorder Secure Port";
 static const wchar_t* registryPath = L"SOFTWARE\\VoucherReorderPrinter";
+static bool port_active() {
+    DWORD active = 1, bytes = sizeof(active);
+    auto status = RegGetValueW(HKEY_LOCAL_MACHINE, registryPath, L"PortActive",
+        RRF_RT_REG_DWORD, nullptr, &active, &bytes);
+    // Older installations did not have this value and always exposed the port.
+    vr::check(status == ERROR_SUCCESS || status == ERROR_FILE_NOT_FOUND);
+    return active != 0;
+}
 static std::wstring configured_sid() {
     wchar_t sid[256]; DWORD size = sizeof(sid);
     vr::check(RegGetValueW(HKEY_LOCAL_MACHINE, registryPath, L"OwnerSid", RRF_RT_REG_SZ,
@@ -52,6 +60,7 @@ struct Port {
 static BOOL WINAPI enum_ports(HANDLE, LPWSTR, DWORD level, LPBYTE data, DWORD size, LPDWORD needed, LPDWORD count) {
     *count = 0; *needed = 0;
     try {
+        if (!port_active()) return TRUE;
         auto name = L"VoucherReorder:" + configured_sid();
         std::wstring monitor(monitorName), description(L"Protected unique PostScript jobs");
         DWORD structure = level == 1 ? sizeof(PORT_INFO_1W) : sizeof(PORT_INFO_2W);
@@ -76,7 +85,7 @@ static BOOL WINAPI enum_ports(HANDLE, LPWSTR, DWORD level, LPBYTE data, DWORD si
 }
 static BOOL WINAPI open_port(HANDLE, LPWSTR name, PHANDLE output) {
     try {
-        auto sid = vr::port_sid(name); vr::check(sid == configured_sid());
+        auto sid = vr::port_sid(name); vr::check(port_active() && sid == configured_sid());
         *output = new Port(sid); return TRUE;
     } catch (...) { SetLastError(ERROR_ACCESS_DENIED); return FALSE; }
 }

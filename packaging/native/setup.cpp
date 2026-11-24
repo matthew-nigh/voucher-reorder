@@ -9,6 +9,17 @@ static const wchar_t* monitor = L"Voucher Reorder Secure Port";
 // Microsoft Print To PDF driver rejects third-party monitors.
 static const wchar_t* driver = L"MS Publisher Imagesetter";
 static const wchar_t* key = L"SOFTWARE\\VoucherReorderPrinter";
+static void set_port_active(bool active) {
+    HKEY registry = nullptr;
+    auto status = RegOpenKeyExW(HKEY_LOCAL_MACHINE, key, 0, KEY_SET_VALUE, &registry);
+    if (!active && status == ERROR_FILE_NOT_FOUND) return;
+    if (status != ERROR_SUCCESS) { SetLastError(status); vr::check(false); }
+    DWORD value = active ? 1 : 0;
+    status = RegSetValueExW(registry, L"PortActive", 0, REG_DWORD,
+        reinterpret_cast<const BYTE*>(&value), sizeof(value));
+    RegCloseKey(registry);
+    if (status != ERROR_SUCCESS) { SetLastError(status); vr::check(false); }
+}
 static std::wstring pdf_path(const std::wstring& sid) {
     const auto profileKey = L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList\\" + sid;
     wchar_t profile[32768]; DWORD bytes = sizeof(profile);
@@ -25,28 +36,28 @@ static std::wstring pdf_path(const std::wstring& sid) {
     return incoming + L"\\virtual.pdf";
 }
 static bool local_port_exists(const std::wstring& path) {
-    DWORD bytes = 0, count = 0;
-    for (int attempt = 0; attempt < 20; ++attempt) {
-        bytes = count = 0;
-        EnumPortsW(nullptr, 2, nullptr, 0, &bytes, &count);
-        vr::check(bytes && bytes < 16 * 1024 * 1024 && GetLastError() == ERROR_INSUFFICIENT_BUFFER);
-        std::vector<BYTE> buffer(bytes);
-        vr::check(EnumPortsW(nullptr, 2, buffer.data(), bytes, &bytes, &count));
-        auto ports = reinterpret_cast<PORT_INFO_2W*>(buffer.data());
-        for (DWORD i = 0; i < count; ++i) {
-            if (!_wcsicmp(ports[i].pPortName, path.c_str())) {
-                vr::check(ports[i].pMonitorName && !_wcsicmp(ports[i].pMonitorName, L"Local Port"));
-                return true;
-            }
-        }
-        Sleep(100);
-    }
-    return false;
+    // This protected key is owned by Windows' Local Port monitor. A value with
+    // this exact name proves monitor ownership without enumerating unrelated
+    // monitors, one of which can report invalid data while being retired.
+    HKEY registry = nullptr;
+    auto status = RegOpenKeyExW(HKEY_LOCAL_MACHINE,
+        L"SYSTEM\\CurrentControlSet\\Control\\Print\\Monitors\\Local Port\\Ports",
+        0, KEY_QUERY_VALUE, &registry);
+    if (status == ERROR_FILE_NOT_FOUND) return false;
+    if (status != ERROR_SUCCESS) { SetLastError(status); vr::check(false); }
+    DWORD bytes = 0;
+    status = RegQueryValueExW(registry, path.c_str(), nullptr, nullptr, nullptr, &bytes);
+    RegCloseKey(registry);
+    if (status == ERROR_FILE_NOT_FOUND) return false;
+    if (status != ERROR_SUCCESS) { SetLastError(status); vr::check(false); }
+    return true;
 }
-static void add_local_port(const std::wstring& path) {
+static void add_local_port(const std::wstring& path, int& stage) {
     // Reinstalls leave the Local Port in place. Query ownership before AddPort;
     // duplicate status varies across Windows spooler implementations.
+    stage = 162;
     if (local_port_exists(path)) return;
+    stage = 163;
     PRINTER_DEFAULTSW defaults{nullptr, nullptr, SERVER_ACCESS_ADMINISTER};
     HANDLE raw = nullptr;
     vr::check(OpenPrinterW(const_cast<LPWSTR>(L",XcvMonitor Local Port"), &raw, &defaults));
@@ -54,8 +65,10 @@ static void add_local_port(const std::wstring& path) {
     DWORD status = ERROR_SUCCESS;
     // LOCALMON AddPort has no output. A supplied output buffer is rejected as
     // invalid data on supported Windows spoolers.
+    stage = 164;
     vr::check(XcvDataW(raw, L"AddPort", reinterpret_cast<PBYTE>(const_cast<wchar_t*>(path.c_str())),
         static_cast<DWORD>((path.size() + 1) * sizeof(wchar_t)), nullptr, 0, nullptr, &status));
+    stage = 165;
     if (status != ERROR_SUCCESS && !local_port_exists(path)) {
         SetLastError(status);
         vr::check(false);
@@ -142,9 +155,12 @@ int wmain(int argc, wchar_t** argv) {
         stage = 140;
         enable_driver_privilege();
         if (action == L"remove") {
+            // The queue is gone; stop advertising its port before removal.
+            set_port_active(false);
             // No service restart. An in-use monitor stays installed for maintenance.
             if (!DeleteMonitorW(nullptr, nullptr, const_cast<LPWSTR>(monitor)))
-                vr::check(GetLastError() == ERROR_UNKNOWN_PRINT_MONITOR);
+                vr::check(GetLastError() == ERROR_UNKNOWN_PRINT_MONITOR ||
+                    GetLastError() == ERROR_PRINT_MONITOR_IN_USE);
             return 0;
         }
         stage = 150;
@@ -157,6 +173,7 @@ int wmain(int argc, wchar_t** argv) {
         status = RegSetValueExW(registry, L"OwnerSid", 0, REG_SZ, reinterpret_cast<const BYTE*>(sid.c_str()),
             static_cast<DWORD>((sid.size() + 1) * sizeof(wchar_t)));
         RegCloseKey(registry); vr::check(status == ERROR_SUCCESS);
+        set_port_active(action == L"install");
         stage = 160;
         std::wstring selectedPort = port;
         const wchar_t* selectedDriver = driver;
@@ -168,8 +185,7 @@ int wmain(int argc, wchar_t** argv) {
             stage = 161;
             selectedPort = pdf_path(sid);
             selectedDriver = L"Microsoft Print To PDF";
-            stage = 162;
-            add_local_port(selectedPort);
+            add_local_port(selectedPort, stage);
         }
         vr::Descriptor security(L"O:BAG:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;SWRC;;;" + sid + L")(A;OIIO;GA;;;" + sid + L")");
         PRINTER_INFO_2W info{};
@@ -180,10 +196,19 @@ int wmain(int argc, wchar_t** argv) {
         if (action == L"install") info.pDatatype = const_cast<LPWSTR>(L"RAW");
         info.pSecurityDescriptor = security.value; info.Attributes = PRINTER_ATTRIBUTE_LOCAL;
         stage = 170;
-        printer = AddPrinterW(nullptr, 2, reinterpret_cast<LPBYTE>(&info)); vr::check(printer != nullptr);
+        printer = AddPrinterW(nullptr, 2, reinterpret_cast<LPBYTE>(&info));
+        if (!printer) {
+            DWORD error = GetLastError();
+            if (action == L"install") set_port_active(false);
+            SetLastError(error); vr::check(false);
+        }
         stage = 180;
         try { if (action == L"install") configure_paper(printer); }
-        catch (...) { DeletePrinter(printer); ClosePrinter(printer); throw; }
+        catch (...) {
+            DeletePrinter(printer); ClosePrinter(printer);
+            if (action == L"install") set_port_active(false);
+            throw;
+        }
         ClosePrinter(printer);
         return 0;
     } catch (...) {

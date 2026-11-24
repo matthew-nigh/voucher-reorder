@@ -110,8 +110,9 @@ kernel waits. The active document supervisor still enforces resource deadlines.
    once physical-print guarantee. Unclaimed/partial protected files have no age or
    aggregate storage budget and need administrator review.
 7. Decline UAC and test missing helper/policy/driver failures: PDF mode remains
-   usable. Remove through Settings: the queue/secure monitor is removed without
-   restarting Spooler; an in-use monitor reports failure for admin maintenance.
+   usable. Remove through Settings: the queue and its port listing disappear
+   without restarting Spooler. The monitor is removed when unused; an in-use
+   monitor stays installed for administrator maintenance.
    Old detached Local Port registry entries and protected files are intentionally
    left for administrator cleanup. No unrelated/shared system port is deleted.
    Check the stage and Win32 error in the UI and in

@@ -17,7 +17,10 @@ STAGES = {
     150: "protected Imagesetter spool directory or owner registration",
     160: "Imagesetter monitor installation",
     161: "user profile path for Print to PDF",
-    162: "Print to PDF Local Port creation or ownership",
+    162: "Print to PDF Local Port registry ownership lookup",
+    163: "opening the Windows Local Port monitor",
+    164: "Windows Local Port AddPort command",
+    165: "Print to PDF Local Port creation or ownership",
     170: "printer creation or Microsoft Print To PDF driver",
     180: "Imagesetter paper configuration",
 }

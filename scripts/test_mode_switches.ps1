@@ -13,7 +13,11 @@ function Assert-Mode($variant, $driver, $port) {
         $detail = Get-Content (Join-Path $data 'printer-setup-error.txt') -ErrorAction SilentlyContinue
         throw "Wrong printer state: expected $driver on $port; detail=$detail"
     }
+    if ($variant -and -not (Get-PrinterPort -Name $port -ErrorAction Stop)) { throw "Port was not published: $port" }
     if (-not $variant -and $printer) { throw 'Handoff retained the optional printer' }
+    if (-not $variant -and (Get-PrinterPort -Name "VoucherReorder:$sid" -ErrorAction SilentlyContinue)) {
+        throw 'Handoff retained the Imagesetter port'
+    }
 }
 function Change-Mode($action) {
     $active = Get-Content (Join-Path $appRoot 'current.json') -Raw | ConvertFrom-Json
