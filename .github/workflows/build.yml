@@ -66,6 +66,12 @@ jobs:
           }
       - name: Build installer and corresponding source
         run: python scripts/build_windows.py
+      - name: Verify single-installer artifact set
+        shell: powershell
+        run: |
+          if (Test-Path dist/VoucherReorder-0.2.6-PrinterDeploy.exe) { throw 'Obsolete deploy artifact present' }
+          $names = @(Get-Content dist/SHA256SUMS.txt | ForEach-Object { ($_ -split '\s+')[-1] })
+          if (@(Compare-Object $names @('VoucherReorder-0.2.6-Setup.exe','VoucherReorder-0.2.6-sources.zip')).Count) { throw 'Wrong checksum artifact set' }
       - name: Preserve v0.2.1 engine for identical-input size comparisons
         shell: bash
         run: |
@@ -142,7 +148,6 @@ jobs:
           name: VoucherReorder-windows-x64
           path: |
             dist/VoucherReorder-0.2.6-Setup.exe
-            dist/VoucherReorder-0.2.6-PrinterDeploy.exe
             dist/VoucherReorder-0.2.6-sources.zip
             dist/SHA256SUMS.txt
           if-no-files-found: error
@@ -166,10 +171,10 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          printf '%s\n' 'Download VoucherReorder-0.2.6-Setup.exe to install. The source archive and SHA256SUMS.txt are only for building from source or verifying the download. The optional printer requires an administrator to independently verify PrinterDeploy.exe in protected staging and deploy the native helper first; see TESTING_ON_WINDOWS.md. Complete TESTING_ON_WINDOWS.md on plain paper before using check stock. This installer is unsigned.' > release-notes.txt
+          printf '%s\n' 'Download VoucherReorder-0.2.6-Setup.exe and choose PDF handoff, recommended Imagesetter virtual printing, or Microsoft Print to PDF virtual printing. Virtual choices request administrator approval during Setup; Print to PDF may lose back-to-back jobs. The source archive and SHA256SUMS.txt accompany the installer. Complete TESTING_ON_WINDOWS.md on plain paper before using check stock. This installer is unsigned.' > release-notes.txt
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | while IFS= read -r asset; do
-              case "$asset" in *-Provisioning.exe) gh release delete-asset "$RELEASE_TAG" "$asset" --yes ;; esac
+              case "$asset" in *-Provisioning.exe|*-PrinterDeploy.exe) gh release delete-asset "$RELEASE_TAG" "$asset" --yes ;; esac
             done
             gh release upload "$RELEASE_TAG" dist/* --clobber
             gh release edit "$RELEASE_TAG" --notes-file release-notes.txt

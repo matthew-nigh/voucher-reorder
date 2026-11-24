@@ -13,23 +13,22 @@ on your QuickBooks/printer before putting live check stock in the tray.
 
 Download `VoucherReorder-0.2.6-Setup.exe` from the PR's **Actions artifact** (or a
 future tagged Release). Run it normally. Python and PDF tools are included.
-The source archive and SHA256SUMS.txt are only for building from source or verifying
-the download. Virtual printing additionally requires the separate
-`VoucherReorder-0.2.6-PrinterDeploy.exe`, verified and deployed by an administrator
-from protected staging as described in TESTING_ON_WINDOWS.md.
+The source archive and SHA256SUMS.txt accompany the installer for source builds
+and download verification. Setup offers three printing choices:
 
 | Mode | What you do in QuickBooks | Administrator needed? |
 | --- | --- | --- |
-| **Virtual printer — optional** | Print to **Voucher Reorder**; the app reorders and forwards automatically. No PDF Save dialog. | Administrator deploys the verified native helper first; enabling/removing the clone then elevates that protected executable. |
+| **Virtual printer with Imagesetter — recommended** | Print to **Voucher Reorder**; each job gets a unique file. | Setup requests UAC once to deploy the helper and configure the printer. |
+| **Virtual printer with Microsoft Print to PDF** | Print to **Voucher Reorder**; back-to-back jobs may overlap, overwrite, or be lost. Check Job status. | Setup requests UAC once to deploy the helper and configure the printer. |
 | **PDF handoff — default** | Print to an **already available** Microsoft Print to PDF, then save in the Inbox shown in the app. Alternatively save/export a PDF elsewhere and click **Print a PDF**. | **No** admin access to install, upgrade, run or remove the per-user app. |
 
 Declining UAC, lacking credentials, a blocked driver, or a failed optional setup
 leaves a working PDF-mode app. Settings clearly shows the active mode and has
-**Enable virtual printer (UAC)** and **Switch to PDF handoff** buttons. Declining
+**Imagesetter (UAC)**, **Print to PDF (UAC)**, and **Switch to PDF handoff** buttons. Declining
 printer removal still switches to PDF mode; the dormant Windows printer remains
 until an administrator removes it. Setup runs in the background with a visible
 status/progress indicator; its buttons are disabled until success or failure is
-reported. Each enable/remove action uses one UAC prompt after administrator deployment. The app never changes your Windows default printer.
+reported. Setup's virtual choice deploys and configures in one UAC action; later Settings actions elevate the protected helper. The app never changes your Windows default printer.
 
 PDF mode adds a Save step; it cannot hide Windows' Print to PDF filename dialog.
 If that Windows feature or your physical printer driver is missing, enabling or
@@ -129,16 +128,16 @@ There are no background polling loops, timers, heartbeats, or periodic process
 launches. PDF parsing and printing run only for a job; the processor drains the
 queue and exits. Job status reads persisted records, not a heartbeat.
 
-Optional setup elevates `%ProgramFiles%\VoucherReorderPrinter\PrinterSetup.exe`
-directly. It accepts only install/remove and the desktop account SID. No script,
-interpreter command, output path, or per-user dependency runs elevated. An
-administrator first verifies and runs the separate PrinterDeploy package from
-admin-protected staging; deployment compares the installed helper and monitor
-bytes with its embedded resources. The monitor DLL lives in System32 as required
+The virtual Setup choice elevates an installer-embedded native bootstrap from the
+user's download location. It deploys the helper and monitor, verifies their bytes,
+then runs the protected helper for the selected printer in the same elevated pass.
+Later Settings actions elevate `%ProgramFiles%\VoucherReorderPrinter\PrinterSetup.exe`
+directly. No per-user PowerShell script runs elevated. The monitor DLL lives in System32 as required
 by Windows AddMonitor; the setup executable lives in Program Files. Existing
 writable or redirected paths are
 refused rather than having their ACLs repaired. Distribution is still unsigned;
-independent administrator verification remains essential.
+review the download's origin before approving UAC. Code signing is needed for
+strong publisher authentication.
 
 The owner-restricted, unshared **Voucher Reorder** queue uses the built-in
 **MS Publisher Imagesetter** driver and the native **Voucher Reorder Secure Port**
@@ -168,7 +167,8 @@ age limit yet. Administrators must reconcile these before cleanup. Native driver
 ACL, UAC and crash acceptance remains required; see TESTING_ON_WINDOWS.md.
 The bounded worker converts PostScript to PDF with bundled Ghostscript under the
 desktop user's account before validation and reordering.
-`/S /VIRTUAL=1` opts in after helper deployment; plain `/S` needs no administrator.
+`/S` installs handoff without UAC; `/S /VIRTUAL=1` selects Imagesetter and
+`/S /VIRTUAL=pdf` selects Microsoft Print to PDF, both deploying the helper with UAC.
 
 Upgrade removes the old HKCU worker autostart and recognized owned scheduled
 tasks. Old virtual installations fall back to PDF mode without elevation; enabling
@@ -242,13 +242,12 @@ python3 -m venv .venv
 python3 scripts/build_windows.py
 ```
 
-Outputs are in `dist/`: the per-user installer, separate `-PrinterDeploy.exe`,
-matching `-sources.zip`, and `SHA256SUMS.txt`.
+Outputs are in `dist/`: one Setup.exe, matching `-sources.zip`, and `SHA256SUMS.txt`.
 The script packages official x64 Windows binaries from SHA-256-pinned downloads in
 `packaging/dependencies.json`; it does not claim to cross-compile those upstream
 programs. Building the protected printer package requires the x64 MSVC compiler
 and Windows SDK on Windows, or `g++-mingw-w64-x86-64-posix` on Linux.
-`--stage-only` prepares files and builds that native package; `--version 0.2.6` overrides the packaging
+`--stage-only` prepares files and the embedded native bootstrap; `--version 0.2.6` overrides the packaging
 version for upgrade tests (no tag/release is created). Installations need no network
 in PDF mode. Virtual setup uses the inbox Windows v3 MS Publisher Imagesetter driver;
 policy or missing-driver failures fall back to PDF mode.

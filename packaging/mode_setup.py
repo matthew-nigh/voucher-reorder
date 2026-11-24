@@ -3,6 +3,7 @@
 import subprocess
 import sys
 from dataclasses import replace
+from pathlib import Path
 
 from voucher_reorder.config import data_dir, load, save
 from voucher_reorder.lifecycle import stop_worker
@@ -16,12 +17,12 @@ def main(action, ui=False):
     initialized = root / "mode-initialized"
     if action == "auto" and initialized.exists():
         return 0
-    if action == "setup":
+    if action in ("setup", "setup-pdf"):
         (root / "mode-status.txt").unlink(missing_ok=True)
         (root / "printer-setup-code.txt").unlink(missing_ok=True)
     remove = action in ("pdf", "remove")
     settings = load(config)
-    if action == "pdf-printer":
+    if action in ("pdf-printer", "setup-pdf"):
         (root / "Incoming").mkdir(parents=True, exist_ok=True, mode=0o700)
     installed_marker = root / "virtual-installed"
     if remove and settings.mode == "pdf" and not installed_marker.exists():
@@ -29,18 +30,20 @@ def main(action, ui=False):
         return 0
     try:
         stop_worker(root)
-        variant = "print_to_pdf" if action == "pdf-printer" else "imagesetter"
+        variant = "print_to_pdf" if action in ("pdf-printer", "setup-pdf") else "imagesetter"
+        printer_args = [
+            "-Action",
+            "remove" if remove else "install-pdf" if variant == "print_to_pdf" else "install",
+        ]
+        if "--installer" in sys.argv[2:]:
+            printer_args.extend(("-Bootstrap", str(Path(__file__).with_name("PrinterBootstrap.exe"))))
         result = subprocess.run(
-            powershell(
-                "request_printer.ps1",
-                "-Action",
-                "remove" if remove else "install-pdf" if variant == "print_to_pdf" else "install",
-            ),
+            powershell("request_printer.ps1", *printer_args),
             timeout=300,
             check=False,
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
-        if action in ("setup", "pdf-printer") and result.returncode:
+        if action in ("setup", "setup-pdf", "pdf-printer") and result.returncode:
             (root / "printer-setup-code.txt").write_text(str(result.returncode), encoding="ascii")
         if not remove and result.returncode == 0:
             installed_marker.touch()
@@ -59,8 +62,7 @@ def main(action, ui=False):
             )
             if not remove and result.returncode:
                 detail += (
-                    " Virtual printer setup was blocked, declined or failed. An administrator must first "
-                    "verify and run the separate PrinterDeploy package, then enable the printer in Settings."
+                    " Virtual printer setup was blocked, declined or failed. Run Setup again or try Settings."
                 )
             if remove and result.returncode:
                 detail += (
@@ -70,31 +72,31 @@ def main(action, ui=False):
             installed_marker.unlink(missing_ok=True)
             (root / "secure-port-installed").unlink(missing_ok=True)
         initialized.touch()
-        if action not in ("remove", "setup"):
+        if action not in ("remove", "setup", "setup-pdf"):
             register_user()
         if ui or action == "remove":
             (root / "mode-status.txt").write_text(detail, encoding="utf-8")
-        if action == "setup" or ui:
+        if action in ("setup", "setup-pdf") or ui:
             print(detail)
         else:
             message(detail)
-        return 1 if result.returncode and (remove or action == "pdf-printer") else 0
+        return 1 if result.returncode and (remove or action in ("setup", "setup-pdf", "pdf-printer")) else 0
     except Exception:
         # No elevation/setup failure may make the no-admin application unusable.
-        if action in ("setup", "pdf-printer"):
+        if action in ("setup", "setup-pdf", "pdf-printer"):
             (root / "printer-setup-code.txt").write_text("12", encoding="ascii")
         save(config, replace(settings, mode="pdf"))
         initialized.touch()
-        if action not in ("remove", "setup"):
+        if action not in ("remove", "setup", "setup-pdf"):
             register_user()
         detail = "Virtual printer setup was unavailable. PDF handoff mode is ready; open Voucher Reorder from Start."
         if ui or action == "remove":
             (root / "mode-status.txt").write_text(detail, encoding="utf-8")
-        if action == "setup" or ui:
+        if action in ("setup", "setup-pdf") or ui:
             print(detail)
         else:
             message(detail)
-        return 1 if remove or action == "pdf-printer" else 0
+        return 1 if remove or action in ("setup", "setup-pdf", "pdf-printer") else 0
 
 
 if __name__ == "__main__":

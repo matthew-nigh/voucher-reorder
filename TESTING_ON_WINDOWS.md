@@ -7,7 +7,7 @@ installer SHA256 and BUILD_INFO.json revision. Never publish real checks or name
 
 ## Automated coverage
 
-The workflow runs pytest and ruff, builds Setup.exe/PrinterDeploy.exe/source/SHA256SUMS, and checks:
+The workflow runs pytest and ruff, builds Setup.exe/source/SHA256SUMS, and checks:
 
 - Native `ReadDirectoryChangesW` notifications, locked/renamed Inbox arrivals,
   bursts, `watch_inbox` toggles, restart, persisted status, and no idle child spawns.
@@ -67,29 +67,23 @@ kernel waits. The active document supervisor still enforces resource deadlines.
 
 ## Admin clone and Save As qualification
 
-1. **Deploy from trusted administrator staging first.** Obtain
-   `VoucherReorder-0.2.6-PrinterDeploy.exe` and its checksum/provenance through an
-   independently trusted release channel. In an administrator session create a
-   fresh directory under Program Files with owner Administrators and a protected
-   DACL granting only Administrators/SYSTEM write access. Copy the package there,
-   set its owner to Administrators, and verify its SHA256 *there* against the
-   independently obtained digest before running it. Do not elevate a package from
-   Downloads, the per-user app, or a user-writable staging folder. A checksum next
-   to an untrusted download is not authentication. The package refuses writable,
-   reparse, or untrusted-owner staging; no user-side script verifies privileged code.
-   It installs embedded helper bytes into `%ProgramFiles%\VoucherReorderPrinter`
+1. Run the single `VoucherReorder-0.2.6-Setup.exe` and choose **Virtual printer
+   with Imagesetter (recommended)**. Setup requests UAC once. Its embedded native
+   bootstrap runs elevated from the download location, installs helper bytes into
+   `%ProgramFiles%\VoucherReorderPrinter`
    and the monitor into `%SystemRoot%\System32\VoucherReorderPort.dll` as required
    by AddMonitor, with admin/SYSTEM write and Users read/execute ACLs, and verifies
-   the deployed bytes. Re-running the same package
-   is allowed; a different installed binary fails closed. Updating loaded monitor
+   the deployed bytes, then configures the Imagesetter printer in the same pass.
+   Re-running Setup is allowed; a different installed binary fails closed. Updating loaded monitor
    code requires separate administrator maintenance after reconciling queues,
    removing the monitor, and removing the protected old files. No automatic
    spooler restart or privileged self-update is implemented.
-2. Enable virtual printer in Setup or Settings. Expect one UAC elevation of the
-   installed **PrinterSetup.exe**, not PowerShell. Repeat with alternate-admin
+2. Enable virtual printer in Setup or Settings. Setup elevates its embedded native
+   bootstrap; later Settings actions elevate the protected **PrinterSetup.exe**.
+   Repeat with alternate-admin
    credentials: the port must use the original desktop SID. Tamper with the
    per-user `request_printer.ps1`/old `printer.ps1` fixture and verify the installed
-   helper never reads it. Standard users must be unable to modify the helper,
+   helper never reads it. Standard users must be unable to modify the installed helper,
    monitor, protected spool directories or another user's completed PDFs.
 3. Inspect `Get-Printer` and `Get-PrinterPort`: MS Publisher Imagesetter,
    `VoucherReorder:<SID>`, monitor **Voucher Reorder Secure Port**, unshared and
@@ -142,7 +136,7 @@ qualification from portable tests or cross-compilation alone.
   outstanding jobs; create the clone. Reject a foreign queue with the same name.
 - Uninstall preserves settings and outstanding data. Refused optional printer
   removal must be explicit. Old provisioning installation files are not executed
-  by this version. The new native PrinterDeploy package is distributed separately.
+  by this version. Re-run Setup to deploy the helper and choose either virtual option.
 
 ## Physical acceptance
 

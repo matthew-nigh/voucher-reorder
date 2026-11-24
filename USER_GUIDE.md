@@ -4,12 +4,14 @@
 
 1. **Install or upgrade.** Run `VoucherReorder-0.2.6-Setup.exe` normally. If SmartScreen
    appears, confirm the download came from this project, then choose **More info →
-   Run anyway**. PDF mode needs no administrator access. For virtual mode, select
-   **Virtual printer** after an administrator verifies and runs the separate
-   `VoucherReorder-0.2.6-PrinterDeploy.exe` from protected staging (see
-   TESTING_ON_WINDOWS.md). Enabling the printer then asks to elevate the installed
-   **PrinterSetup.exe**. Decline and use PDF mode if that helper is unavailable.
-   You can also enable it later in Settings. Run newer app installers without
+   Run anyway**. Choose **PDF handoff** for a per-user install without UAC.
+   **Virtual printer with Imagesetter** is recommended and gives each job a unique
+   file. **Virtual printer with Microsoft Print to PDF** uses a shared file and
+   may lose back-to-back jobs; check Job status and reprint missing checks.
+   Either virtual choice requests administrator approval once while Setup deploys
+   the protected helper and configures the printer. You can also rerun Setup to
+   enable a virtual printer later, or use Settings once the helper is installed.
+   Run newer app installers without
    uninstalling first. Existing fixed-port printers require migration; printer
    and layout settings stay saved.
 2. **Choose the output and both orders.** Open Voucher Reorder from Start. Choose
@@ -70,7 +72,7 @@ app and Windows. Inbox arrivals move to unique jobs and are deleted after succes
 printer needs UAC; PDF mode does not. During setup, “Setting up the Voucher Reorder
 printer...” and a moving progress bar appear. The mode buttons are disabled while
 it runs, and a success/failure message appears when finished. One UAC prompt is
-expected after administrator deployment; declining it leaves PDF handoff available. **Uninstall:** use Windows Settings → Apps.
+expected after the helper is installed; declining it leaves PDF handoff available. **Uninstall:** use Windows Settings → Apps.
 Declining UAC can leave the optional printer installed but removes the per-user app.
 The protected helper stays installed for administrator maintenance. Pending virtual
 jobs also remain under `%ProgramData%\VoucherReorderSpool\<your SID>`; have an
@@ -89,5 +91,5 @@ with a fresh bounded print process each time. Printing time scales with page cou
 alignment and MICR on the intended printer before using check stock.
 
 To remove machine provisioning, reconcile/cancel Windows queue jobs and uninstall
-the optional printer through Settings using built-in Windows tools. No separate provisioning installer is needed. The
-per-user app and its PDF mode are independent of that package.
+the optional printer through Settings using built-in Windows tools. The per-user
+app and its PDF handoff mode remain usable without the helper.

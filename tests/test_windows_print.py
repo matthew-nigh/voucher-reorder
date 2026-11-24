@@ -92,7 +92,7 @@ def test_old_printer_migration_uses_pdf_without_blocking_upgrade(tmp_path):
     assert not check_version(data, "0.2.1", protected)
     assert load(data / "settings.json").mode == "pdf"
     assert load(data / "settings.json").printer == "FAKE"
-    assert "PrinterDeploy" in (data / "mode-status.txt").read_text()
+    assert "Setup again" in (data / "mode-status.txt").read_text()
     save(data / "settings.json", Settings(mode="virtual"))
     (data / "secure-port-installed").touch()
     assert check_version(data, "0.2.3", protected)

@@ -3,9 +3,9 @@ param([string]$Installer,[string]$UpgradeInstaller)
 $ErrorActionPreference = 'Stop'
 $root = Join-Path $env:LOCALAPPDATA 'Programs\Voucher Reorder'
 $data = Join-Path $env:LOCALAPPDATA 'VoucherReorder'
-function Setup($path,$virtual) {
-    Write-Output "Starting setup $([IO.Path]::GetFileName($path)); virtual=$virtual"
-    $arguments = if ($virtual) { '/S /VIRTUAL=1' } else { '/S' }
+function Setup($path,$variant) {
+    Write-Output "Starting setup $([IO.Path]::GetFileName($path)); virtual=$variant"
+    $arguments = if ($variant) { "/S /VIRTUAL=$variant" } else { '/S' }
     $p = Start-Process (Resolve-Path $path) -ArgumentList $arguments -PassThru
     # -Wait waits for descendants too, including the intentionally persistent watcher.
     if (-not $p.WaitForExit(120000)) { throw 'Installer process timed out' }
@@ -13,35 +13,14 @@ function Setup($path,$virtual) {
     Write-Output 'Setup process exited'
     Get-Content (Join-Path $data 'mode-status.txt') -ErrorAction SilentlyContinue
 }
-# Test-only trusted build staging. Production admins independently verify release
-# provenance and checksums AFTER staging in an admin-protected directory.
-$staging=Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'VoucherReorderPackageTest'
-New-Item -ItemType Directory -Path $staging -ErrorAction Stop | Out-Null
-$acl=New-Object Security.AccessControl.DirectorySecurity
-$acl.SetOwner((New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')))
-$acl.SetAccessRuleProtection($true,$false)
-foreach ($sid in @('S-1-5-18','S-1-5-32-544')) {
-    $identity=New-Object Security.Principal.SecurityIdentifier($sid)
-    $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($identity,'FullControl','ContainerInherit,ObjectInherit','None','Allow')))
-}
-Set-Acl -LiteralPath $staging -AclObject $acl
-try {
-    $deploy=Join-Path $staging 'PrinterDeploy.exe'
-    Copy-Item (Join-Path $PSScriptRoot '..\build\printer\PrinterDeploy.exe') $deploy
-    $fileAcl=Get-Acl -LiteralPath $deploy
-    $fileAcl.SetOwner((New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')))
-    Set-Acl -LiteralPath $deploy -AclObject $fileAcl
-    & $deploy
-    if ($LASTEXITCODE) { throw 'Protected package deployment failed' }
-} finally { Remove-Item -LiteralPath $staging -Recurse -Force }
 $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $securePort="VoucherReorder:$sid"
-Setup $Installer $true # historical v0.2.0 fixture, not shipped by the new installer
+Setup $Installer '1' # historical v0.2.0 fixture, not shipped by the new installer
 if ((Get-Printer -Name 'Voucher Reorder').DriverName -ne 'MS Publisher Imagesetter') { throw 'Legacy fixture missing' }
-Setup $UpgradeInstaller $false
+Setup $UpgradeInstaller $null
 $config=Get-Content (Join-Path $data 'settings.json') -Raw | ConvertFrom-Json
 if ($config.mode -ne 'pdf') { throw 'Legacy upgrade must fall back without elevation' }
-Setup $UpgradeInstaller $true
+Setup $UpgradeInstaller '1'
 $current=Get-Content (Join-Path $root 'current.json') -Raw | ConvertFrom-Json
 if ($current.version -ne '0.2.6') { throw 'Wrong upgraded version' }
 $app=Join-Path $root ('deployments\'+$current.directory)

@@ -1,4 +1,24 @@
-# Security review — current branch, 2026-11-23
+# Security review — current branch, 2026-11-24
+
+## Single-installer elevation boundary
+
+The only distributed executable is `VoucherReorder-0.2.6-Setup.exe`. PDF handoff
+installs per user without elevation. Selecting Imagesetter or Microsoft Print to
+PDF runs an installer-embedded native bootstrap with administrator approval. It
+deploys its embedded `PrinterSetup.exe` into Program Files and monitor DLL into
+System32, verifies destination ACLs, paths and bytes, then invokes the protected
+helper for the selected variant in the same elevated pass. Settings later elevates
+only that installed helper. No user-writable PowerShell script runs elevated.
+
+The elevated bootstrap is extracted and launched from a user-writable app
+deployment, and Setup itself normally runs from Downloads. This is standard
+installer practice, but it lets the installing user influence the executable
+presented for UAC before approval. Code signing and publisher verification are
+needed to authenticate that boundary; this build is **unsigned**. Embedded byte
+checks protect destination integrity against replacement and redirection, but
+do not authenticate the bootstrap's origin. Release provenance and native UAC
+qualification remain important. There is no separate administrator staging or
+second executable for users to verify and run.
 
 ## Selectable Microsoft Print to PDF Local Port variant
 
@@ -68,13 +88,11 @@ stopped installations, crash leftovers, backups and spooler copies remain outsid
 this retention guarantee. A daily scan does not impose a total byte budget.
 
 CR-01, CR-02 and the CR-04 filename remainder are **fixed in source** by the
-protected native printer package in this follow-up; Windows acceptance remains
-pending. `PrinterDeploy.exe` must be independently verified by an administrator
-in admin-protected staging. It deploys embedded helper/monitor bytes with protected
-ACLs and verifies them. The per-user launcher elevates the installed
-`PrinterSetup.exe` directly, with only install/remove and a canonical account SID;
-it no longer elevates PowerShell or reads a per-user script into privileged code.
-The helper also refuses execution outside its protected installed location.
+protected native printer components in this follow-up; Windows acceptance remains
+pending. The single Setup executable embeds a native bootstrap. A virtual choice
+elevates it once to deploy verified helper/monitor bytes with protected ACLs and
+configure the selected printer. Settings elevates the installed `PrinterSetup.exe`
+directly. The helper refuses execution outside its protected installed location.
 
 The native monitor writes UUID-named PostScript jobs under an administrator/SYSTEM-owned
 Program Files spool, never into a user-controlled folder. It rejects reparse points,
@@ -102,8 +120,8 @@ copy/ack handoff, while stale partial files require administrator cleanup.
 integration require Windows 10/11 UAC, ACL, reparse, offline burst and crash
 qualification. Native acceptance harnesses are supplied but were not run on this
 Linux host. Cross-compilation and portable tests do not establish those results.
-Distribution remains unsigned (CR-09/CR-10); initial administrator verification of
-the staged deployment package is the trust bootstrap, not a user-side hash check.
+Distribution remains unsigned (CR-09/CR-10); the installer runs elevated from a
+user-writable location, so publisher authentication depends on future code signing.
 Existing changed helper bytes are refused; upgrades to loaded monitor code need
 administrator maintenance. Old detached Local Port entries, unclaimed protected
 PDFs and crash `.partial` files need administrator reconciliation/cleanup. There
@@ -193,11 +211,11 @@ inside another user-writable script is insufficient. Until resolved, favor PDF
 Inbox mode on machines where standard users must not influence elevated code.
 **Follow-up status: fixed in source.** See `packaging/native/deploy.cpp`,
 `setup.cpp`, `secure.hpp`, and `packaging/request_printer.ps1`. Initial deployment
-uses independently verified admin-protected media, not an automatically elevated
-per-user package. Deployed bytes are compared with embedded resources, all code
-paths are protected and checked, and UAC approves the helper image itself. No
-script or arbitrary executable/path input is accepted. Unsigned provenance and
-native UAC qualification remain residual risks, not claimed fixed here.
+uses the installer-embedded bootstrap for first-time deployment. Deployed bytes
+are compared with embedded resources, installed code paths are protected and
+checked, and later UAC approves the installed helper image itself. The first
+bootstrap runs from user-writable storage; unsigned provenance and native UAC
+qualification remain residual risks, not claimed fixed here.
 
 ### CR-02 — High, conditional: privileged fixed-port output follows mutable paths
 

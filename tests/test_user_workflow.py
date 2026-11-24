@@ -235,7 +235,7 @@ def test_installer_mode_result_is_only_reported_to_installer(tmp_path, monkeypat
     monkeypatch.setattr(
         module.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(returncode=exit_code)
     )
-    assert module.main("setup") == 0
+    assert module.main("setup") == exit_code
     assert "mode is ready" in capsys.readouterr().out
     assert not (tmp_path / "mode-status.txt").exists()
     code_file = tmp_path / "printer-setup-code.txt"
@@ -256,9 +256,29 @@ def test_installer_setup_exception_records_failure_without_losing_pdf_mode(tmp_p
         raise TimeoutError
 
     monkeypatch.setattr(module, "stop_worker", timeout)
-    assert module.main("setup") == 0
+    assert module.main("setup") == 1
     assert load(tmp_path / "settings.json").mode == "pdf"
     assert (tmp_path / "printer-setup-code.txt").read_text() == "12"
+
+
+def test_installer_pdf_choice_uses_embedded_bootstrap_and_saves_variant(tmp_path, monkeypatch):
+    source = Path(__file__).parents[1] / "packaging/mode_setup.py"
+    spec = importlib.util.spec_from_file_location("test_pdf_install_mode", source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    save(tmp_path / "settings.json", config())
+    calls = []
+    monkeypatch.setattr(module, "data_dir", lambda: tmp_path)
+    monkeypatch.setattr(module, "stop_worker", lambda *args: None)
+    monkeypatch.setattr(module, "powershell", lambda *args: calls.append(args) or ["fake-command"])
+    monkeypatch.setattr(module.subprocess, "CREATE_NO_WINDOW", 0, raising=False)
+    monkeypatch.setattr(module.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(returncode=0))
+    monkeypatch.setattr(module.sys, "argv", ["mode_setup.py", "setup-pdf", "--installer"])
+    assert module.main("setup-pdf") == 0
+    assert calls[0][1:3] == ("-Action", "install-pdf")
+    assert calls[0][3] == "-Bootstrap"
+    assert calls[0][4].endswith("PrinterBootstrap.exe")
+    assert load(tmp_path / "settings.json").virtual_variant == "print_to_pdf"
 
 
 def test_pdf_virtual_setup_failure_is_visible_to_acceptance_runner(tmp_path, monkeypatch):

@@ -5,14 +5,16 @@ $python = Join-Path $appRoot 'runtime\python.exe'
 $app = Join-Path $appRoot 'app.py'
 $data = Join-Path $env:LOCALAPPDATA 'VoucherReorder'
 $mode = Join-Path $appRoot 'packaging\mode_setup.py'
+$installer = Join-Path $PSScriptRoot '..\dist\VoucherReorder-0.2.6-Setup.exe'
 $child = Join-Path $PSScriptRoot 'probe_pdf_overlap.ps1'
 $run = [guid]::NewGuid().ToString('N')
 $outputFolder = Join-Path $data ('CI-PDF-burst-' + $run)
 $processes = [Collections.Generic.List[object]]::new()
 try {
-    & $python $mode pdf-printer --ui
+    $setup = Start-Process (Resolve-Path $installer) -ArgumentList '/S /VIRTUAL=pdf' -PassThru
+    if (-not $setup.WaitForExit(120000) -or $setup.ExitCode) { throw "PDF virtual installer failed: $($setup.ExitCode)" }
     $configured = Get-Content (Join-Path $data 'settings.json') -Raw | ConvertFrom-Json
-    if ($LASTEXITCODE -or $configured.mode -ne 'virtual' -or $configured.virtual_variant -ne 'print_to_pdf') {
+    if ($configured.mode -ne 'virtual' -or $configured.virtual_variant -ne 'print_to_pdf') {
         $code = Get-Content (Join-Path $data 'printer-setup-code.txt') -ErrorAction SilentlyContinue
         throw "PDF virtual printer setup failed; helper code=$code"
     }

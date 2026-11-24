@@ -92,9 +92,9 @@ def build(output):
         f'101 RCDATA "{(output / "PrinterSetup.exe").as_posix()}"\n'
         f'102 RCDATA "{(output / "VoucherReorderPort.dll").as_posix()}"\n',
     )
-    compile_file("deploy.cpp", "PrinterDeploy.exe", [admin, embedded])
+    compile_file("deploy.cpp", "PrinterBootstrap.exe", [admin, embedded])
     compile_file("security_test.cpp", "PrinterSecurityTest.exe", [admin])
-    return output / "PrinterDeploy.exe"
+    return output / "PrinterBootstrap.exe"
 
 
 if __name__ == "__main__":

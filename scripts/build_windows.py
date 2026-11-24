@@ -168,10 +168,10 @@ def main():
     )
     dist = ROOT / "dist"
     dist.mkdir(exist_ok=True)
+    (dist / f"VoucherReorder-{version}-PrinterDeploy.exe").unlink(missing_ok=True)
     from build_printer import build
 
-    provisioning = dist / f"VoucherReorder-{version}-PrinterDeploy.exe"
-    shutil.copy2(build(ROOT / "build/printer"), provisioning)
+    shutil.copy2(build(ROOT / "build/printer"), stage / "packaging/PrinterBootstrap.exe")
     # Source distribution uses an explicit allowlist: no local user data, credentials, or downloads outside pins.
     with zipfile.ZipFile(
         dist / f"VoucherReorder-{version}-sources.zip", "w", zipfile.ZIP_DEFLATED
@@ -201,7 +201,6 @@ def main():
         for path in (
             dist / f"VoucherReorder-{version}-Setup.exe",
             dist / f"VoucherReorder-{version}-sources.zip",
-            provisioning,
         ):
             if path.exists():
                 with path.open("rb") as data:

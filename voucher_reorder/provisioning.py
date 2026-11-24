@@ -12,7 +12,7 @@ def check_version(data, version, protected=None):
     save(data / "settings.json", replace(settings, mode="pdf"))
     (data / "mode-status.txt").write_text(
         "The old virtual printer needs migration. PDF mode is ready. Enable virtual printer in "
-        "Settings after an administrator verifies and runs the separate PrinterDeploy package. "
+        "Settings after running Setup again to install the printer helper. "
         "If setup is blocked or declined, continue saving PDFs in Inbox.",
         encoding="utf-8",
     )
