@@ -33,20 +33,28 @@ static void add_local_port(const std::wstring& path) {
         SetLastError(status);
         vr::check(false);
     }
+    // The successful Xcv command ran on the Local Port monitor itself. Its
+    // new port can appear in EnumPorts only after the spooler publishes it.
+    // An existing name still needs a monitor ownership check.
+    if (status == ERROR_SUCCESS) return;
     DWORD bytes = 0, count = 0;
-    EnumPortsW(nullptr, 2, nullptr, 0, &bytes, &count);
-    vr::check(bytes && bytes < 16 * 1024 * 1024 && GetLastError() == ERROR_INSUFFICIENT_BUFFER);
-    std::vector<BYTE> buffer(bytes);
-    vr::check(EnumPortsW(nullptr, 2, buffer.data(), bytes, &bytes, &count));
-    auto ports = reinterpret_cast<PORT_INFO_2W*>(buffer.data());
-    bool matched = false;
-    for (DWORD i = 0; i < count; ++i) {
-        if (!_wcsicmp(ports[i].pPortName, path.c_str())) {
-            vr::check(ports[i].pMonitorName && !_wcsicmp(ports[i].pMonitorName, L"Local Port"));
-            matched = true;
+    for (int attempt = 0; attempt < 20; ++attempt) {
+        bytes = count = 0;
+        EnumPortsW(nullptr, 2, nullptr, 0, &bytes, &count);
+        vr::check(bytes && bytes < 16 * 1024 * 1024 && GetLastError() == ERROR_INSUFFICIENT_BUFFER);
+        std::vector<BYTE> buffer(bytes);
+        vr::check(EnumPortsW(nullptr, 2, buffer.data(), bytes, &bytes, &count));
+        auto ports = reinterpret_cast<PORT_INFO_2W*>(buffer.data());
+        for (DWORD i = 0; i < count; ++i) {
+            if (!_wcsicmp(ports[i].pPortName, path.c_str())) {
+                vr::check(ports[i].pMonitorName && !_wcsicmp(ports[i].pMonitorName, L"Local Port"));
+                return;
+            }
         }
+        Sleep(100);
     }
-    vr::check(matched);
+    SetLastError(ERROR_NOT_FOUND);
+    vr::check(false);
 }
 static std::vector<BYTE> printer_info(HANDLE printer) {
     DWORD bytes = 0; GetPrinterW(printer, 2, nullptr, 0, &bytes);
