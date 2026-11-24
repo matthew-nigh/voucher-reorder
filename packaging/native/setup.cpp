@@ -62,12 +62,12 @@ static void add_local_port(const std::wstring& path, int& stage) {
     HANDLE raw = nullptr;
     vr::check(OpenPrinterW(const_cast<LPWSTR>(L",XcvMonitor Local Port"), &raw, &defaults));
     std::unique_ptr<void, decltype(&ClosePrinter)> xcv(raw, ClosePrinter);
-    DWORD status = ERROR_SUCCESS;
-    // LOCALMON AddPort has no output. A supplied output buffer is rejected as
-    // invalid data on supported Windows spoolers.
+    DWORD needed = 0, status = ERROR_SUCCESS;
+    // LOCALMON AddPort has no output buffer, but the Winspool XcvDataW client
+    // still requires a non-null pcbOutputNeeded pointer (error 87 otherwise).
     stage = 164;
     vr::check(XcvDataW(raw, L"AddPort", reinterpret_cast<PBYTE>(const_cast<wchar_t*>(path.c_str())),
-        static_cast<DWORD>((path.size() + 1) * sizeof(wchar_t)), nullptr, 0, nullptr, &status));
+        static_cast<DWORD>((path.size() + 1) * sizeof(wchar_t)), nullptr, 0, &needed, &status));
     stage = 165;
     if (status != ERROR_SUCCESS && !local_port_exists(path)) {
         SetLastError(status);
