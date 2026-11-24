@@ -65,8 +65,13 @@ static BOOL WINAPI enum_ports(HANDLE, LPWSTR, DWORD level, LPBYTE data, DWORD si
         std::wstring monitor(monitorName), description(L"Protected unique PostScript jobs");
         DWORD structure = level == 1 ? sizeof(PORT_INFO_1W) : sizeof(PORT_INFO_2W);
         if (level != 1 && level != 2) { SetLastError(ERROR_INVALID_LEVEL); return FALSE; }
-        *needed = structure + static_cast<DWORD>((name.size() + 1) * sizeof(wchar_t));
-        if (level == 2) *needed += static_cast<DWORD>((monitor.size() + description.size() + 2) * sizeof(wchar_t));
+        DWORD content = structure + static_cast<DWORD>((name.size() + 1) * sizeof(wchar_t));
+        if (level == 2) content += static_cast<DWORD>((monitor.size() + description.size() + 2) * sizeof(wchar_t));
+        // The spooler concatenates each monitor's result into one array of
+        // PORT_INFO structures. Its next structure must remain pointer-aligned
+        // even when our UTF-16 strings consume an odd number of DWORDs.
+        constexpr DWORD alignment = alignof(PORT_INFO_2W);
+        *needed = (content + alignment - 1) & ~(alignment - 1);
         if (size < *needed) { SetLastError(ERROR_INSUFFICIENT_BUFFER); return FALSE; }
         ZeroMemory(data, *needed);
         auto cursor = reinterpret_cast<wchar_t*>(data + structure);
