@@ -9,28 +9,6 @@ static const wchar_t* monitor = L"Voucher Reorder Secure Port";
 // Microsoft Print To PDF driver rejects third-party monitors.
 static const wchar_t* driver = L"MS Publisher Imagesetter";
 static const wchar_t* key = L"SOFTWARE\\VoucherReorderPrinter";
-static const wchar_t* monitorPorts =
-    L"SYSTEM\\CurrentControlSet\\Control\\Print\\Monitors\\Voucher Reorder Secure Port\\Ports";
-static void register_secure_port(const std::wstring& sid, bool active) {
-    HKEY registry = nullptr;
-    LONG status = active
-        ? RegCreateKeyExW(HKEY_LOCAL_MACHINE, monitorPorts, 0, nullptr, 0, KEY_SET_VALUE,
-            nullptr, &registry, nullptr)
-        : RegOpenKeyExW(HKEY_LOCAL_MACHINE, monitorPorts, 0, KEY_SET_VALUE, &registry);
-    if (!active && status == ERROR_FILE_NOT_FOUND) return;
-    if (status != ERROR_SUCCESS) { SetLastError(status); vr::check(false); }
-    auto port = L"VoucherReorder:" + sid;
-    if (active) {
-        const wchar_t empty[] = L"";
-        status = RegSetValueExW(registry, port.c_str(), 0, REG_SZ,
-            reinterpret_cast<const BYTE*>(empty), sizeof(empty));
-    } else {
-        status = RegDeleteValueW(registry, port.c_str());
-        if (status == ERROR_FILE_NOT_FOUND) status = ERROR_SUCCESS;
-    }
-    RegCloseKey(registry);
-    if (status != ERROR_SUCCESS) { SetLastError(status); vr::check(false); }
-}
 static void set_port_active(bool active) {
     HKEY registry = nullptr;
     auto status = RegOpenKeyExW(HKEY_LOCAL_MACHINE, key, 0, KEY_SET_VALUE, &registry);
@@ -179,7 +157,6 @@ int wmain(int argc, wchar_t** argv) {
         if (action == L"remove") {
             // The queue is gone; stop advertising its port before removal.
             set_port_active(false);
-            register_secure_port(sid, false);
             // No service restart. An in-use monitor stays installed for maintenance.
             if (!DeleteMonitorW(nullptr, nullptr, const_cast<LPWSTR>(monitor)))
                 vr::check(GetLastError() == ERROR_UNKNOWN_PRINT_MONITOR ||
@@ -197,7 +174,6 @@ int wmain(int argc, wchar_t** argv) {
             static_cast<DWORD>((sid.size() + 1) * sizeof(wchar_t)));
         RegCloseKey(registry); vr::check(status == ERROR_SUCCESS);
         set_port_active(action == L"install");
-        if (action == L"install-pdf") register_secure_port(sid, false);
         stage = 160;
         std::wstring selectedPort = port;
         const wchar_t* selectedDriver = driver;
@@ -205,7 +181,6 @@ int wmain(int argc, wchar_t** argv) {
             MONITOR_INFO_2W monitorInfo{const_cast<LPWSTR>(monitor), const_cast<LPWSTR>(L"Windows x64"), const_cast<LPWSTR>(L"VoucherReorderPort.dll")};
             if (!AddMonitorW(nullptr, 2, reinterpret_cast<LPBYTE>(&monitorInfo)))
                 vr::check(GetLastError() == ERROR_PRINT_MONITOR_ALREADY_INSTALLED);
-            register_secure_port(sid, true);
         } else {
             stage = 161;
             selectedPort = pdf_path(sid);
@@ -226,7 +201,6 @@ int wmain(int argc, wchar_t** argv) {
             DWORD error = GetLastError();
             if (action == L"install") {
                 set_port_active(false);
-                register_secure_port(sid, false);
             }
             SetLastError(error); vr::check(false);
         }
@@ -236,7 +210,6 @@ int wmain(int argc, wchar_t** argv) {
             DeletePrinter(printer); ClosePrinter(printer);
             if (action == L"install") {
                 set_port_active(false);
-                register_secure_port(sid, false);
             }
             throw;
         }

@@ -10,21 +10,33 @@ static void reject(const std::wstring& path) {
     vr::check(refused);
 }
 static void check_port(const std::wstring& port, const wchar_t* monitor, bool expected) {
+    std::vector<BYTE> buffer(1024 * 1024);
     DWORD bytes = 0, count = 0;
-    EnumPortsW(nullptr, 2, nullptr, 0, &bytes, &count);
-    vr::check(bytes && bytes < 16 * 1024 * 1024 && GetLastError() == ERROR_INSUFFICIENT_BUFFER);
-    std::vector<BYTE> buffer(bytes);
-    vr::check(EnumPortsW(nullptr, 2, buffer.data(), bytes, &bytes, &count));
+    for (;;) {
+        if (EnumPortsW(nullptr, 2, buffer.data(), static_cast<DWORD>(buffer.size()), &bytes, &count)) break;
+        DWORD error = GetLastError();
+        if (error == ERROR_INSUFFICIENT_BUFFER && bytes > buffer.size() && bytes < 16 * 1024 * 1024) {
+            buffer.resize(bytes); continue;
+        }
+        std::wcerr << L"EnumPortsW failed with Windows error " << error << L", bytes=" << bytes << L"\n";
+        vr::check(false);
+    }
+    vr::check(count <= buffer.size() / sizeof(PORT_INFO_2W));
     auto entries = reinterpret_cast<PORT_INFO_2W*>(buffer.data());
     bool found = false;
+    std::wstring owner;
     for (DWORD i = 0; i < count; ++i) {
         if (entries[i].pPortName && !_wcsicmp(entries[i].pPortName, port.c_str())) {
-            vr::check(!found && (!monitor || (entries[i].pMonitorName &&
-                !_wcsicmp(entries[i].pMonitorName, monitor))));
+            vr::check(!found);
             found = true;
+            if (entries[i].pMonitorName) owner = entries[i].pMonitorName;
         }
     }
+    if (found != expected || (found && monitor && _wcsicmp(owner.c_str(), monitor)))
+        std::wcerr << L"Port check: found=" << found << L", monitor=" << owner
+                   << L", enumerated=" << count << L"\n";
     vr::check(found == expected);
+    if (found && monitor) vr::check(!_wcsicmp(owner.c_str(), monitor));
 }
 int wmain(int argc, wchar_t** argv) {
     const wchar_t* stage = L"arguments";
