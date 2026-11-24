@@ -15,7 +15,8 @@ function Assert-Mode($variant, $driver, $port) {
         throw "Wrong printer state: expected $driver on $port; detail=$detail"
     }
     if ($variant) {
-        $monitor = if ($variant -eq 'imagesetter') { 'Voucher Reorder Secure Port' } else { 'Local Port' }
+        # Win32 EnumPorts labels Windows' Local Port monitor "Local Monitor".
+        $monitor = if ($variant -eq 'imagesetter') { 'Voucher Reorder Secure Port' } else { 'Local Monitor' }
         & $portProbe --port $port $monitor
         if ($LASTEXITCODE) { throw "Port was not published by ${monitor}: $port" }
     }
