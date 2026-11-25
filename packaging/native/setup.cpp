@@ -9,6 +9,8 @@ static const wchar_t* monitor = L"Voucher Reorder Secure Port";
 // Microsoft Print To PDF driver rejects third-party monitors.
 static const wchar_t* driver = L"MS Publisher Imagesetter";
 static const wchar_t* key = L"SOFTWARE\\VoucherReorderPrinter";
+struct SetupFailure { DWORD error; };
+[[noreturn]] static void fail(DWORD error) { throw SetupFailure{error}; }
 static void set_port_active(bool active) {
     HKEY registry = nullptr;
     auto status = RegOpenKeyExW(HKEY_LOCAL_MACHINE, key, 0, KEY_SET_VALUE, &registry);
@@ -35,21 +37,37 @@ static std::wstring pdf_path(const std::wstring& sid) {
     vr::check(attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY));
     return incoming + L"\\virtual.pdf";
 }
+static bool enumerated_port_exists(const std::wstring& path) {
+    DWORD bytes = 0, count = 0;
+    if (!EnumPortsW(nullptr, 1, nullptr, 0, &bytes, &count)) {
+        DWORD error = GetLastError();
+        if (error != ERROR_INSUFFICIENT_BUFFER) fail(error);
+    }
+    if (!bytes) return false;
+    std::vector<BYTE> data(bytes);
+    if (!EnumPortsW(nullptr, 1, data.data(), bytes, &bytes, &count)) fail(GetLastError());
+    if (count > data.size() / sizeof(PORT_INFO_1W)) fail(ERROR_INVALID_DATA);
+    auto ports = reinterpret_cast<const PORT_INFO_1W*>(data.data());
+    for (DWORD i = 0; i < count; ++i)
+        if (ports[i].pName && path == ports[i].pName) return true;
+    return false;
+}
 static bool local_port_exists(const std::wstring& path) {
     // LOCALMON stores its ports in the legacy Windows NT Ports key, not under
     // Control\Print\Monitors\Local Port\Ports. A value with this exact name
     // proves ownership without relying on a localized EnumPorts monitor name.
+    // Some systems reject this registry query; ask the spooler in that case.
     HKEY registry = nullptr;
     auto status = RegOpenKeyExW(HKEY_LOCAL_MACHINE,
         L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Ports",
-        0, KEY_QUERY_VALUE, &registry);
+        0, KEY_QUERY_VALUE | KEY_WOW64_64KEY, &registry);
     if (status == ERROR_FILE_NOT_FOUND) return false;
-    if (status != ERROR_SUCCESS) { SetLastError(status); vr::check(false); }
+    if (status != ERROR_SUCCESS) return enumerated_port_exists(path);
     DWORD bytes = 0;
     status = RegQueryValueExW(registry, path.c_str(), nullptr, nullptr, nullptr, &bytes);
     RegCloseKey(registry);
     if (status == ERROR_FILE_NOT_FOUND) return false;
-    if (status != ERROR_SUCCESS) { SetLastError(status); vr::check(false); }
+    if (status != ERROR_SUCCESS) return enumerated_port_exists(path);
     return true;
 }
 static void add_local_port(const std::wstring& path, int& stage) {
@@ -60,19 +78,20 @@ static void add_local_port(const std::wstring& path, int& stage) {
     stage = 163;
     PRINTER_DEFAULTSW defaults{nullptr, nullptr, SERVER_ACCESS_ADMINISTER};
     HANDLE raw = nullptr;
-    vr::check(OpenPrinterW(const_cast<LPWSTR>(L",XcvMonitor Local Port"), &raw, &defaults));
+    if (!OpenPrinterW(const_cast<LPWSTR>(L",XcvMonitor Local Port"), &raw, &defaults)) fail(GetLastError());
     std::unique_ptr<void, decltype(&ClosePrinter)> xcv(raw, ClosePrinter);
     DWORD needed = 0, status = ERROR_SUCCESS;
     // LOCALMON AddPort has no output buffer, but the Winspool XcvDataW client
     // still requires a non-null pcbOutputNeeded pointer (error 87 otherwise).
     stage = 164;
-    vr::check(XcvDataW(raw, L"AddPort", reinterpret_cast<PBYTE>(const_cast<wchar_t*>(path.c_str())),
-        static_cast<DWORD>((path.size() + 1) * sizeof(wchar_t)), nullptr, 0, &needed, &status));
-    stage = 165;
-    if (status != ERROR_SUCCESS && !local_port_exists(path)) {
-        SetLastError(status);
-        vr::check(false);
+    if (!XcvDataW(raw, L"AddPort", reinterpret_cast<PBYTE>(const_cast<wchar_t*>(path.c_str())),
+        static_cast<DWORD>((path.size() + 1) * sizeof(wchar_t)), nullptr, 0, &needed, &status)) {
+        DWORD error = GetLastError();
+        if (error == ERROR_ALREADY_EXISTS || error == ERROR_FILE_EXISTS) return;
+        fail(error);
     }
+    stage = 165;
+    if (status != ERROR_SUCCESS && status != ERROR_ALREADY_EXISTS && status != ERROR_FILE_EXISTS) fail(status);
 }
 static std::vector<BYTE> printer_info(HANDLE printer) {
     DWORD bytes = 0; GetPrinterW(printer, 2, nullptr, 0, &bytes);
@@ -202,7 +221,7 @@ int wmain(int argc, wchar_t** argv) {
             if (action == L"install") {
                 set_port_active(false);
             }
-            SetLastError(error); vr::check(false);
+            fail(error);
         }
         stage = 180;
         try { if (action == L"install") configure_paper(printer); }
@@ -215,6 +234,11 @@ int wmain(int argc, wchar_t** argv) {
         }
         ClosePrinter(printer);
         return 0;
+    } catch (const SetupFailure& failure) {
+        DWORD error = failure.error;
+        std::wcerr << L"Printer setup refused at stage " << stage << L" (Windows error " << error
+                   << L"). PDF Inbox remains available.\n";
+        return stage * 10000 + static_cast<int>(error % 10000);
     } catch (...) {
         DWORD error = GetLastError();
         std::wcerr << L"Printer setup refused at stage " << stage << L" (Windows error " << error

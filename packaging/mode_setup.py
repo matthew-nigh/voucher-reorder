@@ -46,9 +46,10 @@ def main(action, ui=False):
     if action == "auto" and initialized.exists():
         return 0
     if action in ("setup", "setup-pdf"):
+        # The installer starts a fresh result; later mode actions retain both files together.
         (root / "mode-status.txt").unlink(missing_ok=True)
         (root / "printer-setup-code.txt").unlink(missing_ok=True)
-    (root / "printer-setup-error.txt").unlink(missing_ok=True)
+        (root / "printer-setup-error.txt").unlink(missing_ok=True)
     remove = action in ("pdf", "remove")
     settings = load(config)
     if action in ("pdf-printer", "setup-pdf"):

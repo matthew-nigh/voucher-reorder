@@ -240,6 +240,7 @@ def test_installer_mode_result_is_only_reported_to_installer(tmp_path, monkeypat
     assert not (tmp_path / "mode-status.txt").exists()
     code_file = tmp_path / "printer-setup-code.txt"
     assert code_file.exists() == (exit_code != 0)
+    assert (tmp_path / "printer-setup-error.txt").exists() == (exit_code != 0)
     if exit_code:
         assert code_file.read_text() == str(exit_code)
 
@@ -313,6 +314,36 @@ def test_pdf_virtual_setup_failure_is_visible_to_acceptance_runner(tmp_path, mon
     assert (tmp_path / "printer-setup-code.txt").read_text() == "16200005"
     assert "stage 162" in (tmp_path / "printer-setup-error.txt").read_text()
     assert "Windows error 5" in (tmp_path / "mode-status.txt").read_text()
+
+
+@pytest.mark.parametrize("follow_up", ["pdf", "auto", "pdf-printer"])
+def test_settings_follow_up_keeps_error_with_nonzero_code(tmp_path, monkeypatch, follow_up):
+    source = Path(__file__).parents[1] / "packaging/mode_setup.py"
+    spec = importlib.util.spec_from_file_location("test_mode_follow_up", source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    save(tmp_path / "settings.json", config())
+    monkeypatch.setattr(module, "data_dir", lambda: tmp_path)
+    monkeypatch.setattr(module, "stop_worker", lambda *args: None)
+    monkeypatch.setattr(module, "powershell", lambda *args: ["fake-command"])
+    monkeypatch.setattr(module, "register_user", lambda: None)
+    monkeypatch.setattr(module.subprocess, "CREATE_NO_WINDOW", 0, raising=False)
+    results = iter((1620013, 0))
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=next(results)),
+    )
+    assert module.main("pdf-printer", ui=True) == 1
+    code = tmp_path / "printer-setup-code.txt"
+    error = tmp_path / "printer-setup-error.txt"
+    assert code.read_text() == "1620013"
+    assert "Windows error 13" in error.read_text()
+    if follow_up == "auto":
+        (tmp_path / "mode-initialized").unlink()
+    module.main(follow_up, ui=True)
+    assert code.read_text() == "1620013"
+    assert "Windows error 13" in error.read_text()
 
 
 @pytest.mark.parametrize("outcome", [0, 1, "timeout"])
