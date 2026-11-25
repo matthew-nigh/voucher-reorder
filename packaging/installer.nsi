@@ -12,6 +12,17 @@ Unicode True
 !ifndef OUTPUT
   !error "Pass DOUTPUT"
 !endif
+!ifndef VERSION
+  !error "Pass DVERSION (major.minor.patch)"
+!endif
+VIProductVersion "${VERSION}.0"
+VIFileVersion "${VERSION}.0"
+VIAddVersionKey "ProductName" "Voucher Reorder"
+VIAddVersionKey "CompanyName" "M. Nigh"
+VIAddVersionKey "LegalCopyright" "Copyright (C) M. Nigh"
+VIAddVersionKey "FileDescription" "Voucher Reorder per-user installer"
+VIAddVersionKey "FileVersion" "${VERSION}"
+VIAddVersionKey "ProductVersion" "${VERSION}"
 !define MUI_ICON "${STAGE}\packaging\printer.ico"
 !define MUI_UNICON "${STAGE}\packaging\printer.ico"
 Name "Voucher Reorder"

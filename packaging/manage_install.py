@@ -54,7 +54,7 @@ def integrate(root, candidate, version):
             "DisplayName": "Voucher Reorder",
             "DisplayVersion": version,
             "InstallLocation": str(root),
-            "Publisher": "Voucher Reorder contributors",
+            "Publisher": "M. Nigh",
             "UninstallString": f'"{root / "Uninstall.exe"}"',
         }.items():
             winreg.SetValueEx(key, name, 0, winreg.REG_SZ, value)

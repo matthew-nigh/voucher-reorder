@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import re
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -584,3 +585,62 @@ def test_pdf_export_folder_alias_cannot_point_into_inbox(tmp_path, monkeypatch):
     alias.symlink_to(inbox, target_is_directory=True)
     with pytest.raises(ValueError, match="outside the Inbox"):
         Settings(output_mode="pdf", output_folder=str(alias))
+
+
+@pytest.mark.parametrize(
+    ("code", "stage_text", "error"),
+    [
+        (2100032, "stopping the print spooler", 32),
+        (2100005, "stopping the print spooler", 5),
+        (2101058, "stopping the print spooler", 1058),
+        (2110032, "restarting the print spooler", 32),
+        (2200032, "copying PrinterSetup.exe", 32),
+        (2210032, "copying VoucherReorderPort.dll", 32),
+        (2310023, "VoucherReorderPort.dll bytes", 23),
+        (2000005, "protected destination check", 5),
+        (1620013, "Local Port", 13),
+    ],
+)
+def test_deploy_stage_codes_name_substep_and_win32_error(code, stage_text, error):
+    module = _load_mode_setup("test_deploy_codes")
+    text = module.failure_reason(code)
+    assert stage_text in text and f"Windows error {error}." in text
+    assert "protected destination, file verification, or administrator access" not in text
+
+
+def _load_mode_setup(name):
+    source = Path(__file__).parents[1] / "packaging/mode_setup.py"
+    spec = importlib.util.spec_from_file_location(name, source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_every_native_deploy_stage_has_a_message():
+    root = Path(__file__).parents[1]
+    module = _load_mode_setup("test_deploy_stage_table")
+    native = (root / "packaging/native/deploy.cpp").read_text()
+    stages = {int(n) for n in re.findall(r"= (2\d\d),", native)}
+    assert stages and stages <= set(module.STAGES)
+    # Printer stages 100-180 keep their meaning.
+    assert {100, 110, 160, 162, 180} <= set(module.STAGES)
+    assert module.failure_reason(1).startswith("Installer deployment failed")
+    assert module.failure_reason(11).startswith("Printer setup image")
+
+
+def test_deploy_is_robust_on_upgrade_and_publisher_is_set():
+    root = Path(__file__).parents[1]
+    native = (root / "packaging/native/deploy.cpp").read_text()
+    assert "MOVEFILE_DELAY_UNTIL_REBOOT" in native and "FileRenameInfo" in native
+    assert "rename_aside" in native and "30000" in native and "SERVICE_STOPPED" in native
+    assert "Deployment refused" not in native
+    assert "installed_is_stale(101" in native and "installed_is_stale(102" in native
+    assert "MS Publisher Imagesetter" in (root / "packaging/native/setup.cpp").read_text()
+    assert '"Publisher": "M. Nigh"' in (root / "packaging/manage_install.py").read_text()
+    nsi = (root / "packaging/installer.nsi").read_text()
+    assert 'VIAddVersionKey "CompanyName" "M. Nigh"' in nsi and "LegalCopyright" in nsi
+    assert "VIProductVersion" in nsi
+    build = (root / "scripts/build_printer.py").read_text()
+    assert 'PUBLISHER = "M. Nigh"' in build and "VERSIONINFO" in build
+    workflow = (root / ".github/workflows/build.yml").read_text()
+    assert "test_stale_monitor_upgrade.ps1" in workflow

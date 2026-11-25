@@ -194,6 +194,7 @@ def main():
                 compiler,
                 f"{prefix}DSTAGE={stage}",
                 f"{prefix}DOUTPUT={payload}",
+                f"{prefix}DVERSION={version}",
                 str(ROOT / "packaging/installer.nsi"),
             ],
             check=True,

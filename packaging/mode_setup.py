@@ -23,6 +23,17 @@ STAGES = {
     165: "Print to PDF Local Port creation or ownership",
     170: "printer creation or Microsoft Print To PDF driver",
     180: "Imagesetter paper configuration",
+    # Elevated Setup deploy sub-steps (packaging/native/deploy.cpp).
+    200: "protected destination check (Program Files or System32)",
+    201: "inspecting the installed helper or monitor",
+    210: "stopping the print spooler",
+    211: "restarting the print spooler",
+    220: "copying PrinterSetup.exe to Program Files",
+    221: "copying VoucherReorderPort.dll to System32",
+    230: "verifying the PrinterSetup.exe bytes and ACL",
+    231: "verifying the VoucherReorderPort.dll bytes and ACL",
+    240: "starting the Program Files PrinterSetup.exe",
+    241: "waiting for the Program Files PrinterSetup.exe",
 }
 
 
@@ -31,7 +42,7 @@ def failure_reason(code):
         stage, error = divmod(code, 10000)
         return f"Printer setup failed at stage {stage} ({STAGES.get(stage, 'native printer operation')}); Windows error {error}."
     return {
-        1: "Installer deployment failed: protected destination, file verification, or administrator access.",
+        1: "Installer deployment failed before any sub-step was reported (older Setup image).",
         10: "Printer setup was declined or could not be started by Windows.",
         11: "Printer setup image is missing or its location is unsafe.",
         12: "Printer setup could not finish the application preparation.",

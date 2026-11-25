@@ -134,6 +134,18 @@ jobs:
         shell: powershell
         timeout-minutes: 10
         run: scripts/test_mode_switches.ps1
+      - name: Check out the previous native build as the stale-upgrade baseline
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: a2ce244b320df4f52525e6e25e142de05bc2f5d0
+          path: stale-baseline
+      - name: Build the older PrinterSetup.exe and VoucherReorderPort.dll
+        shell: powershell
+        run: python -c "import sys; sys.path.insert(0, 'scripts'); sys.argv=['x']; import build_printer, pathlib; build_printer.ROOT = pathlib.Path('stale-baseline').resolve(); build_printer.build('build/old-printer')"
+      - name: Upgrade over a stale monitor DLL held by the spooler and a locked helper
+        shell: powershell
+        timeout-minutes: 8
+        run: scripts/test_stale_monitor_upgrade.ps1
       - name: Exercise selectable Print to PDF Local Port burst
         shell: powershell
         timeout-minutes: 6
