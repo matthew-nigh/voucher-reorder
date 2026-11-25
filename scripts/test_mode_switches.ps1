@@ -46,7 +46,10 @@ function Change-Mode($action) {
     }
 }
 $process = Start-Process (Resolve-Path $installer) -ArgumentList '/S /VIRTUAL=1' -PassThru
-if (-not $process.WaitForExit(120000) -or $process.ExitCode) { throw "Imagesetter installer failed: $($process.ExitCode)" }
+if (-not $process.WaitForExit(120000) -or $process.ExitCode) {
+    $detail = Get-Content (Join-Path $data 'printer-setup-error.txt') -ErrorAction SilentlyContinue
+    throw "Imagesetter installer failed: $($process.ExitCode); detail=$detail"
+}
 Assert-Mode 'imagesetter' 'MS Publisher Imagesetter' "VoucherReorder:$sid"
 $profile = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$sid").ProfileImagePath
 $pdfPort = Join-Path ([Environment]::ExpandEnvironmentVariables($profile)) 'AppData\Local\VoucherReorder\Incoming\virtual.pdf'

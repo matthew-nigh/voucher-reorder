@@ -3,6 +3,7 @@
 #include "secure.hpp"
 #include <shellapi.h>
 #include <winsvc.h>
+#include <winspool.h>
 #include <cstring>
 #include <iostream>
 #include <vector>
@@ -111,6 +112,15 @@ struct SpoolerRestart {
         // Best effort: StartService fails harmlessly if it is already running.
         if (StartServiceW(service, 0, nullptr) || GetLastError() == ERROR_SERVICE_ALREADY_RUNNING) {
             try { wait(service, SERVICE_RUNNING); } catch (...) {}
+            // SERVICE_RUNNING precedes the spooler's RPC endpoint and monitor
+            // loading. Wait until it answers, or the printer helper started
+            // next races it (RPC unavailable / invalid printer name).
+            for (int i = 0; i < 600; ++i) {
+                DWORD bytes = 0, count = 0;
+                if (EnumPrintersW(PRINTER_ENUM_LOCAL, nullptr, 4, nullptr, 0, &bytes, &count) ||
+                    GetLastError() == ERROR_INSUFFICIENT_BUFFER) break;
+                Sleep(100);
+            }
         }
     }
     ~SpoolerRestart() { restart(); CloseServiceHandle(service); CloseServiceHandle(manager); }
