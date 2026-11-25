@@ -28,10 +28,29 @@ $printer = Get-Printer -Name 'Voucher Reorder'
 if ($printer.DriverName -ne 'MS Publisher Imagesetter') { throw 'Imagesetter not active before stale simulation' }
 # 2. Make both installed files stale (older build) while the spooler is stopped,
 #    then let the spooler load the old monitor DLL.
-Stop-Service Spooler -Force
-Copy-Item (Join-Path $OldBuild 'VoucherReorderPort.dll') $monitor -Force
-Copy-Item (Join-Path $OldBuild 'PrinterSetup.exe') $helper -Force
-Start-Service Spooler
+function Install-Stale($source, $destination) {
+    # A stopped spooler's monitor DLL can stay briefly locked: retry, then move
+    # the locked file aside (a mapped image can be renamed but not overwritten).
+    $deadline = (Get-Date).AddSeconds(20)
+    while ($true) {
+        try { Copy-Item -LiteralPath $source -Destination $destination -Force -ErrorAction Stop; return }
+        catch {
+            if ((Get-Date) -gt $deadline) { break }
+            Start-Sleep -Milliseconds 500
+        }
+    }
+    Move-Item -LiteralPath $destination -Destination ($destination + '.fixture-' + [guid]::NewGuid().ToString('N')) -Force
+    Copy-Item -LiteralPath $source -Destination $destination -Force -ErrorAction Stop
+}
+# The spooler must always be running again, even if the fixture step fails.
+try {
+    Stop-Service Spooler -Force
+    Get-Process spoolsv -ErrorAction SilentlyContinue | Wait-Process -Timeout 30 -ErrorAction SilentlyContinue
+    Install-Stale (Join-Path $OldBuild 'VoucherReorderPort.dll') $monitor
+    Install-Stale (Join-Path $OldBuild 'PrinterSetup.exe') $helper
+} finally {
+    Start-Service Spooler
+}
 $spooler = Get-Process spoolsv
 $loaded = $spooler.Modules | Where-Object { $_.ModuleName -eq 'VoucherReorderPort.dll' }
 if (-not $loaded) { throw 'Spooler did not load the stale monitor DLL' }
