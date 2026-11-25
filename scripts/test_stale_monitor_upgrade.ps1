@@ -51,9 +51,21 @@ try {
 } finally {
     Start-Service Spooler
 }
-$spooler = Get-Process spoolsv
-$loaded = $spooler.Modules | Where-Object { $_.ModuleName -eq 'VoucherReorderPort.dll' }
-if (-not $loaded) { throw 'Spooler did not load the stale monitor DLL' }
+# The spooler loads monitors after the service reports Running: wait for it to
+# answer, then poll (up to 60 s) until the stale DLL is mapped into spoolsv.
+$loaded = $null
+$deadline = (Get-Date).AddSeconds(60)
+do {
+    try { $null = Get-Printer -ErrorAction Stop } catch { }
+    $loaded = Get-Process spoolsv -ErrorAction SilentlyContinue | ForEach-Object {
+        try { $_.Modules | Where-Object { $_.ModuleName -eq 'VoucherReorderPort.dll' } } catch { }
+    }
+    if (-not $loaded) { Start-Sleep -Seconds 1 }
+} until ($loaded -or (Get-Date) -gt $deadline)
+if (-not $loaded) {
+    $names = (Get-Process spoolsv -ErrorAction SilentlyContinue | ForEach-Object { try { $_.Modules.ModuleName } catch { 'modules unreadable' } }) -join ', '
+    throw "Spooler did not load the stale monitor DLL; spoolsv modules: $names"
+}
 if ((Hash $monitor) -ne (Hash (Join-Path $OldBuild 'VoucherReorderPort.dll'))) { throw 'Stale monitor fixture not in place' }
 $new = @{ 'PrinterSetup.exe' = Hash (Join-Path $newBuild 'PrinterSetup.exe'); 'VoucherReorderPort.dll' = Hash (Join-Path $newBuild 'VoucherReorderPort.dll') }
 if ((Hash $helper) -eq $new['PrinterSetup.exe'] -or (Hash $monitor) -eq $new['VoucherReorderPort.dll']) {
