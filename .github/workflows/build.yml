@@ -100,9 +100,9 @@ jobs:
           name: Settings-previews
           path: build/settings-previews/*.png
           if-no-files-found: ignore
-      - name: Print a synthetic batch to a Windows file port
+      - name: Print a synthetic batch (including a 100-page job) to a Windows file port
         shell: powershell
-        timeout-minutes: 8
+        timeout-minutes: 20
         run: scripts/test_print_pages.ps1
       - name: Probe standard-user PDF Local Port token and junction behavior
         shell: powershell
@@ -130,9 +130,9 @@ jobs:
         shell: powershell
         timeout-minutes: 6
         run: scripts/test_provisioning.ps1 -Installer upgrade-baseline/dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.6-Setup.exe
-      - name: Switch Imagesetter, Print to PDF, handoff, and repeat the PDF install
+      - name: Switch Imagesetter, Print to PDF, handoff, repeat the PDF install, and check EnumPortsW/Get-PrinterPort
         shell: powershell
-        timeout-minutes: 6
+        timeout-minutes: 10
         run: scripts/test_mode_switches.ps1
       - name: Exercise selectable Print to PDF Local Port burst
         shell: powershell

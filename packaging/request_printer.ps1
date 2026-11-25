@@ -13,7 +13,10 @@ try {
     # replace the useful code with this script's generic catch result.
     $target = $helper
     $arguments = @($Action,$sid)
-    if ($Installer -and -not (Test-Path -LiteralPath $helper -PathType Leaf)) {
+    # During install/upgrade always elevate this Setup image (never AppData): only
+    # its /elevated-printer path can replace a stale Program Files helper and
+    # monitor DLL. Settings (no -Installer) elevates the installed helper as-is.
+    if ($Installer) {
         $target = [Environment]::GetEnvironmentVariable('VOUCHER_REORDER_SETUP_IMAGE')
         if (-not $target -or -not $target.EndsWith('-Setup.exe', [StringComparison]::OrdinalIgnoreCase)) { exit 11 }
         $target = [IO.Path]::GetFullPath($target)

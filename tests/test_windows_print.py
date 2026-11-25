@@ -121,6 +121,12 @@ def test_print_error_code_reaches_job_status(tmp_path, monkeypatch):
     assert "code 7" in str(state)
 
 
+def test_hundred_page_job_is_within_limits():
+    assert bounded.MAX_PAGES >= 100
+    assert bounded.print_timeout(100) == 60 + 30 * 100
+    assert bounded.TIMEOUT >= 300
+
+
 def test_ten_page_print_budget():
     assert bounded.print_timeout(10) == 360
     assert bounded.PRINT_MEMORY == 384 * 1024**2

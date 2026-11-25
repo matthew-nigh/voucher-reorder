@@ -5,6 +5,14 @@ $appRoot = Join-Path $env:LOCALAPPDATA 'Programs\Voucher Reorder'
 $data = Join-Path $env:LOCALAPPDATA 'VoucherReorder'
 $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $portProbe = Join-Path $PSScriptRoot '..\build\printer\PrinterSecurityTest.exe'
+function Assert-Enumeration($label) {
+    # No installed monitor may break system-wide port enumeration.
+    & $portProbe --enum-all
+    if ($LASTEXITCODE) { throw "EnumPortsW is broken ($label)" }
+    try { $ports = @(Get-PrinterPort -ErrorAction Stop) }
+    catch { throw "Get-PrinterPort is broken ($label): $($_.Exception.Message)" }
+    if (-not $ports.Count) { throw "Get-PrinterPort returned no ports ($label)" }
+}
 function Assert-Mode($variant, $driver, $port) {
     $settings = Get-Content (Join-Path $data 'settings.json') -Raw | ConvertFrom-Json
     if ($settings.mode -ne $(if ($variant) { 'virtual' } else { 'pdf' }) -or
@@ -25,6 +33,7 @@ function Assert-Mode($variant, $driver, $port) {
         & $portProbe --port-absent "VoucherReorder:$sid"
         if ($LASTEXITCODE) { throw 'Handoff retained the Imagesetter port' }
     }
+    Assert-Enumeration "variant=$variant"
 }
 function Change-Mode($action) {
     $active = Get-Content (Join-Path $appRoot 'current.json') -Raw | ConvertFrom-Json

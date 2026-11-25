@@ -20,7 +20,7 @@ from .process import background_options
 MAX_PAGES = 250
 MEMORY = 768 * 1024**2
 MAX_OUTPUT = 256 * 1024**2
-TIMEOUT = 120
+TIMEOUT = 300  # 100-page PostScript/PDF preparation must not hit the deadline
 PRINT_MEMORY = 384 * 1024**2
 PRINT_STARTUP = 60
 PRINT_PER_PAGE = 30

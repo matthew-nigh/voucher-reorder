@@ -9,6 +9,7 @@
 #undef InitializePrintMonitor2
 #include <rpc.h>
 #include <cstring>
+#include <cstdint>
 
 static const wchar_t* monitorName = L"Voucher Reorder Secure Port";
 static const wchar_t* registryPath = L"SOFTWARE\\VoucherReorderPrinter";
@@ -57,42 +58,53 @@ struct Port {
     }
     ~Port() { reset(); }
 };
+// The spooler concatenates every monitor's result into one shared buffer.
+// Contract (as LOCALMON): fixed-size structures fill from the front of the
+// buffer we are handed; strings are packed backward from the END OF cbBuf.
+// *pcbNeeded must be exactly structures + string bytes, with no padding: the
+// spooler hands the next monitor a buffer that ends where our strings begin
+// (end - (pcbNeeded - structures)). Any extra padding or placing strings after
+// the structure makes monitors overwrite each other and breaks every
+// EnumPortsW/Get-PrinterPort caller on the machine (error 13, ERROR_INVALID_DATA).
+// PORT_INFO sizes are multiples of pointer alignment, so records stay aligned.
+static_assert(sizeof(PORT_INFO_1W) % alignof(PORT_INFO_1W) == 0 && sizeof(PORT_INFO_2W) % alignof(PORT_INFO_2W) == 0,
+    "PORT_INFO records must stay pointer-aligned when concatenated");
 static BOOL WINAPI enum_ports(HANDLE, LPWSTR, DWORD level, LPBYTE data, DWORD size, LPDWORD needed, LPDWORD count) {
     *count = 0; *needed = 0;
+    if (level != 1 && level != 2) { SetLastError(ERROR_INVALID_LEVEL); return FALSE; }
     try {
         if (!port_active()) return TRUE;
         auto name = L"VoucherReorder:" + configured_sid();
         std::wstring monitor(monitorName), description(L"Protected unique PostScript jobs");
+        auto bytes_of = [](const std::wstring& v) { return static_cast<DWORD>((v.size() + 1) * sizeof(wchar_t)); };
         DWORD structure = level == 1 ? sizeof(PORT_INFO_1W) : sizeof(PORT_INFO_2W);
-        if (level != 1 && level != 2) { SetLastError(ERROR_INVALID_LEVEL); return FALSE; }
-        DWORD content = structure + static_cast<DWORD>((name.size() + 1) * sizeof(wchar_t));
-        if (level == 2) content += static_cast<DWORD>((monitor.size() + description.size() + 2) * sizeof(wchar_t));
-        // The spooler concatenates each monitor's result into one array of
-        // PORT_INFO structures. Its next structure must remain pointer-aligned
-        // even when our UTF-16 strings consume an odd number of DWORDs.
-        constexpr DWORD alignment = alignof(PORT_INFO_2W);
-        *needed = (content + alignment - 1) & ~(alignment - 1);
-        if (size < *needed) { SetLastError(ERROR_INSUFFICIENT_BUFFER); return FALSE; }
-        ZeroMemory(data, structure);
-        // The spooler shares one output buffer across monitors. It advances
-        // the structure area from the front and packs strings from the end of
-        // cbBuf, not from the end of pcbNeeded. Putting strings immediately
-        // after our structure corrupts that shared layout (EnumPorts error 13).
-        auto cursor = data + (size & ~DWORD{1});
+        DWORD strings = bytes_of(name);
+        if (level == 2) strings += bytes_of(monitor) + bytes_of(description);
+        *needed = structure + strings;
+        if (!data || size < *needed) { SetLastError(ERROR_INSUFFICIENT_BUFFER); return FALSE; }
+        // End of the caller's buffer (cbBuf), kept wchar_t-aligned by address.
+        auto cursor = reinterpret_cast<BYTE*>(reinterpret_cast<uintptr_t>(data + size) & ~uintptr_t{1});
+        if (cursor < data + structure + strings) { SetLastError(ERROR_INSUFFICIENT_BUFFER); return FALSE; }
         auto put = [&](const std::wstring& value) {
-            auto bytes = (value.size() + 1) * sizeof(wchar_t);
-            cursor -= bytes;
-            memcpy(cursor, value.c_str(), bytes);
+            auto n = bytes_of(value);
+            cursor -= n; memcpy(cursor, value.c_str(), n);
             return reinterpret_cast<wchar_t*>(cursor);
         };
-        if (level == 1) reinterpret_cast<PORT_INFO_1W*>(data)->pName = put(name);
-        else {
-            auto info = reinterpret_cast<PORT_INFO_2W*>(data);
-            info->pPortName = put(name); info->pMonitorName = put(monitor);
-            info->pDescription = put(description); info->fPortType = PORT_TYPE_WRITE;
+        if (level == 1) {
+            PORT_INFO_1W info{}; info.pName = put(name);
+            memcpy(data, &info, sizeof(info));
+        } else {
+            PORT_INFO_2W info{};
+            info.pPortName = put(name); info.pMonitorName = put(monitor);
+            info.pDescription = put(description); info.fPortType = PORT_TYPE_WRITE;
+            memcpy(data, &info, sizeof(info));
         }
         *count = 1; return TRUE;
-    } catch (...) { SetLastError(ERROR_ACCESS_DENIED); return FALSE; }
+    } catch (...) {
+        // A broken or half-configured monitor must never fail the whole
+        // system-wide enumeration. Publish nothing instead.
+        *count = 0; *needed = 0; return TRUE;
+    }
 }
 static BOOL WINAPI open_port(HANDLE, LPWSTR name, PHANDLE output) {
     try {

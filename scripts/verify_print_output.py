@@ -34,7 +34,7 @@ def verify(path, count, first=None):
             assert len(drawings) > 30, "Blank or incomplete voucher content"
             if first is not None:
                 actual = 0
-                for bit in range(6):
+                for bit in range(7):
                     point = pymupdf.Point(483 + bit * 9, 28)
                     if any(
                         d["fill"] == (0, 0, 0)

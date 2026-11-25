@@ -37,44 +37,22 @@ static std::wstring pdf_path(const std::wstring& sid) {
     vr::check(attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY));
     return incoming + L"\\virtual.pdf";
 }
-static bool enumerated_port_exists(const std::wstring& path) {
-    DWORD bytes = 0, count = 0;
-    if (!EnumPortsW(nullptr, 1, nullptr, 0, &bytes, &count)) {
-        DWORD error = GetLastError();
-        if (error != ERROR_INSUFFICIENT_BUFFER) fail(error);
-    }
-    if (!bytes) return false;
-    std::vector<BYTE> data(bytes);
-    if (!EnumPortsW(nullptr, 1, data.data(), bytes, &bytes, &count)) fail(GetLastError());
-    if (count > data.size() / sizeof(PORT_INFO_1W)) fail(ERROR_INVALID_DATA);
-    auto ports = reinterpret_cast<const PORT_INFO_1W*>(data.data());
-    for (DWORD i = 0; i < count; ++i)
-        if (ports[i].pName && path == ports[i].pName) return true;
-    return false;
-}
-static bool local_port_exists(const std::wstring& path) {
-    // LOCALMON stores its ports in the legacy Windows NT Ports key, not under
-    // Control\Print\Monitors\Local Port\Ports. A value with this exact name
-    // proves ownership without relying on a localized EnumPorts monitor name.
-    // Some systems reject this registry query; ask the spooler in that case.
+// Registry is only a hint that the Local Port already exists. It must never be
+// required, and it must never depend on EnumPorts: a third-party monitor with a
+// bad EnumPorts breaks system-wide enumeration (error 13) for everyone.
+static bool local_port_hint(const std::wstring& path) {
     HKEY registry = nullptr;
-    auto status = RegOpenKeyExW(HKEY_LOCAL_MACHINE,
-        L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Ports",
-        0, KEY_QUERY_VALUE | KEY_WOW64_64KEY, &registry);
-    if (status == ERROR_FILE_NOT_FOUND) return false;
-    if (status != ERROR_SUCCESS) return enumerated_port_exists(path);
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Ports",
+        0, KEY_QUERY_VALUE | KEY_WOW64_64KEY, &registry) != ERROR_SUCCESS) return false;
     DWORD bytes = 0;
-    status = RegQueryValueExW(registry, path.c_str(), nullptr, nullptr, nullptr, &bytes);
+    auto status = RegQueryValueExW(registry, path.c_str(), nullptr, nullptr, nullptr, &bytes);
     RegCloseKey(registry);
-    if (status == ERROR_FILE_NOT_FOUND) return false;
-    if (status != ERROR_SUCCESS) return enumerated_port_exists(path);
-    return true;
+    return status == ERROR_SUCCESS;
 }
 static void add_local_port(const std::wstring& path, int& stage) {
-    // Reinstalls leave the Local Port in place. Query ownership before AddPort;
-    // duplicate status varies across Windows spooler implementations.
+    // AddPort directly; already-exists is success. No EnumPortsW anywhere.
     stage = 162;
-    if (local_port_exists(path)) return;
+    if (local_port_hint(path)) return;
     stage = 163;
     PRINTER_DEFAULTSW defaults{nullptr, nullptr, SERVER_ACCESS_ADMINISTER};
     HANDLE raw = nullptr;
@@ -92,6 +70,18 @@ static void add_local_port(const std::wstring& path, int& stage) {
     }
     stage = 165;
     if (status != ERROR_SUCCESS && status != ERROR_ALREADY_EXISTS && status != ERROR_FILE_EXISTS) fail(status);
+}
+// Print to PDF does not use the secure port. Unregister it so a stale or faulty
+// copy cannot sit in the spooler's EnumPorts path. Best effort: PortActive is
+// already false, and the monitor itself never fails enumeration.
+static void retire_secure_monitor() {
+    for (int i = 0; i < 10; ++i) {
+        if (DeleteMonitorW(nullptr, nullptr, const_cast<LPWSTR>(monitor))) return;
+        DWORD error = GetLastError();
+        if (error == ERROR_UNKNOWN_PRINT_MONITOR) return;
+        if (error != ERROR_PRINT_MONITOR_IN_USE) return;
+        Sleep(1000);
+    }
 }
 static std::vector<BYTE> printer_info(HANDLE printer) {
     DWORD bytes = 0; GetPrinterW(printer, 2, nullptr, 0, &bytes);
@@ -203,6 +193,7 @@ int wmain(int argc, wchar_t** argv) {
         } else {
             stage = 161;
             selectedPort = pdf_path(sid);
+            retire_secure_monitor();
             selectedDriver = L"Microsoft Print To PDF";
             add_local_port(selectedPort, stage);
         }

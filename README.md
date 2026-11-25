@@ -181,7 +181,7 @@ is left alone. Foreign queues are never replaced. A declined/blocked setup is
 reported plainly and leaves PDF mode usable. The old Program Files provisioning
 package is not executed by the new app; any historical installation files remain.
 
-The expected workload is ten pages or fewer per job, including consecutive jobs.
+The expected workload is up to 100 pages per job, including consecutive jobs.
 Printing has a 384 MiB combined process-tree cap; PDF preparation retains its
 768 MiB cap, 250-page validation ceiling, and 256 MiB expanded-content limit.
 Inspection/conversion have 120-second deadlines;

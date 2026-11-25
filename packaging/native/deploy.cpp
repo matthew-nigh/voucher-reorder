@@ -2,35 +2,119 @@
 // The distributed Setup image: run the per-user NSIS UI or perform its elevated action.
 #include "secure.hpp"
 #include <shellapi.h>
+#include <winsvc.h>
 #include <cstring>
 #include <iostream>
 #include <vector>
 
-static void deploy(WORD id, const std::wstring& path) {
+struct Embedded { const void* bytes; DWORD size; };
+static Embedded embedded(WORD id) {
     auto resource = FindResourceW(nullptr, MAKEINTRESOURCEW(id), RT_RCDATA); vr::check(resource != nullptr);
     auto size = SizeofResource(nullptr, resource); vr::check(size != 0);
     auto bytes = LockResource(LoadResource(nullptr, resource)); vr::check(bytes != nullptr);
+    return {bytes, size};
+}
+static bool same_bytes(HANDLE file, const Embedded& want) {
+    LARGE_INTEGER actual{}, zero{};
+    vr::check(GetFileSizeEx(file, &actual) && actual.QuadPart < 256 * 1024 * 1024);
+    if (actual.QuadPart != want.size) return false;
+    vr::check(SetFilePointerEx(file, zero, nullptr, FILE_BEGIN));
+    std::vector<BYTE> copy(want.size); DWORD read = 0;
+    vr::check(ReadFile(file, copy.data(), want.size, &read, nullptr) && read == want.size);
+    return !memcmp(want.bytes, copy.data(), want.size);
+}
+// True when the file exists and differs from the embedded bytes. The existing
+// file must pass the same owner/ACL/reparse checks before it is even compared.
+static bool installed_is_stale(WORD id, const std::wstring& path) {
+    auto want = embedded(id);
+    vr::Handle file(CreateFileW(path.c_str(), GENERIC_READ | READ_CONTROL, FILE_SHARE_READ, nullptr,
+        OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
+    if (file.value == INVALID_HANDLE_VALUE) {
+        vr::check(GetLastError() == ERROR_FILE_NOT_FOUND || GetLastError() == ERROR_PATH_NOT_FOUND);
+        return false;
+    }
+    vr::verify(file.value, path);
+    return !same_bytes(file.value, want);
+}
+// Installs or replaces a fixed-name file. A stale file is replaced in place
+// only after it passes verification (trusted owner, no untrusted writers, no
+// reparse point or extra links); an unsafe existing file is still refused.
+static void deploy(WORD id, const std::wstring& path) {
+    auto want = embedded(id);
     vr::Descriptor sd(L"O:BAG:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;GRGX;;;BU)");
     SECURITY_ATTRIBUTES sa{sizeof(sa), sd.value, FALSE};
     vr::Handle file(CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE | READ_CONTROL, 0, &sa,
         CREATE_NEW, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
+    bool write = true;
     if (file.value == INVALID_HANDLE_VALUE && GetLastError() == ERROR_FILE_EXISTS) {
-        file.value = CreateFileW(path.c_str(), GENERIC_READ | READ_CONTROL, FILE_SHARE_READ, nullptr,
+        // Exclusive access fails (sharing violation) while the file is mapped
+        // by a running process; the caller stops the spooler first for the DLL.
+        file.value = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE | READ_CONTROL, 0, nullptr,
             OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
         vr::check(file.value != INVALID_HANDLE_VALUE); vr::verify(file.value, path);
-        // An existing installation is accepted only if the deployed bytes match.
-        // Updating loaded spooler code requires separate admin maintenance.
-    } else {
-        vr::check(file.value != INVALID_HANDLE_VALUE); DWORD written;
-        vr::check(WriteFile(file.value, bytes, size, &written, nullptr) && written == size);
+        write = !same_bytes(file.value, want);
+    } else vr::check(file.value != INVALID_HANDLE_VALUE);
+    if (write) {
+        LARGE_INTEGER zero{}; DWORD written = 0;
+        vr::check(SetFilePointerEx(file.value, zero, nullptr, FILE_BEGIN));
+        vr::check(WriteFile(file.value, want.bytes, want.size, &written, nullptr) && written == want.size);
+        vr::check(SetEndOfFile(file.value));
         vr::check(FlushFileBuffers(file.value));
     }
     vr::verify(file.value, path);
-    LARGE_INTEGER actual{}, zero{}; vr::check(GetFileSizeEx(file.value, &actual) && actual.QuadPart == size);
-    vr::check(SetFilePointerEx(file.value, zero, nullptr, FILE_BEGIN));
-    std::vector<BYTE> copy(size); DWORD read;
-    vr::check(ReadFile(file.value, copy.data(), size, &read, nullptr) && read == size && !memcmp(bytes, copy.data(), size));
+    vr::check(same_bytes(file.value, want));
 }
+// Replacing a monitor DLL the spooler already loaded needs the spooler stopped
+// (a mapped image cannot be overwritten, and the old code would stay resident).
+// The registered monitor entry is untouched; the restarted spooler loads the new
+// bytes. The spooler is always restarted, even if replacement fails.
+struct SpoolerRestart {
+    SC_HANDLE manager = nullptr, service = nullptr; bool stopped = false;
+    static void wait(SC_HANDLE service, DWORD want) {
+        for (int i = 0; i < 300; ++i) {
+            SERVICE_STATUS_PROCESS status{}; DWORD bytes = 0;
+            vr::check(QueryServiceStatusEx(service, SC_STATUS_PROCESS_INFO, reinterpret_cast<BYTE*>(&status), sizeof(status), &bytes));
+            if (status.dwCurrentState == want) return;
+            Sleep(100);
+        }
+        vr::check(false, "spooler state change timed out");
+    }
+    static void stop(SC_HANDLE manager, SC_HANDLE service) {
+        DWORD bytes = 0, count = 0;
+        EnumDependentServicesW(service, SERVICE_ACTIVE, nullptr, 0, &bytes, &count);
+        if (bytes) {
+            std::vector<BYTE> data(bytes);
+            vr::check(EnumDependentServicesW(service, SERVICE_ACTIVE, reinterpret_cast<LPENUM_SERVICE_STATUSW>(data.data()), bytes, &bytes, &count));
+            auto list = reinterpret_cast<LPENUM_SERVICE_STATUSW>(data.data());
+            for (DWORD i = 0; i < count; ++i) {
+                std::unique_ptr<SC_HANDLE__, decltype(&CloseServiceHandle)> dependent(
+                    OpenServiceW(manager, list[i].lpServiceName, SERVICE_STOP | SERVICE_QUERY_STATUS), CloseServiceHandle);
+                SERVICE_STATUS status{};
+                if (dependent && ControlService(dependent.get(), SERVICE_CONTROL_STOP, &status)) wait(dependent.get(), SERVICE_STOPPED);
+            }
+        }
+        SERVICE_STATUS status{};
+        if (!ControlService(service, SERVICE_CONTROL_STOP, &status))
+            vr::check(GetLastError() == ERROR_SERVICE_NOT_ACTIVE);
+        wait(service, SERVICE_STOPPED);
+    }
+    SpoolerRestart() {
+        manager = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT); vr::check(manager != nullptr);
+        service = OpenServiceW(manager, L"Spooler", SERVICE_STOP | SERVICE_START | SERVICE_QUERY_STATUS | SERVICE_ENUMERATE_DEPENDENTS);
+        if (!service) { CloseServiceHandle(manager); vr::check(false); }
+        stopped = true;
+        try { stop(manager, service); } catch (...) { restart(); throw; }
+    }
+    void restart() noexcept {
+        if (!stopped) return;
+        stopped = false;
+        // Best effort: StartService fails harmlessly if it is already running.
+        if (StartServiceW(service, 0, nullptr) || GetLastError() == ERROR_SERVICE_ALREADY_RUNNING) {
+            try { wait(service, SERVICE_RUNNING); } catch (...) {}
+        }
+    }
+    ~SpoolerRestart() { restart(); CloseServiceHandle(service); CloseServiceHandle(manager); }
+};
 static int installer(int argc, wchar_t** argv) {
     wchar_t self[32768];
     vr::check(GetModuleFileNameW(nullptr, self, 32768) > 0);
@@ -67,11 +151,21 @@ static int run(int argc, wchar_t** argv) {
         std::wstring action(argv[2]), sid(argv[3]);
         vr::check((action == L"install" || action == L"install-pdf") && vr::account_sid(sid));
         vr::LockedTree directory(vr::program(), true, L"BU");
-        deploy(101, vr::program() + L"\\PrinterSetup.exe");
-        // AddMonitor requires the DLL in System32. Deploy only our fixed name,
+        // AddMonitor requires the DLL in System32. Deploy only our fixed names,
         // with the same no-reparse/ACL checks and embedded-byte verification.
+        // Stale files from an earlier build are replaced here, in the elevated
+        // Setup image; the installed helper never updates itself.
         vr::LockedTree system(vr::system_directory());
-        deploy(102, vr::system_directory() + L"\\VoucherReorderPort.dll");
+        const auto helper = vr::program() + L"\\PrinterSetup.exe";
+        const auto monitor = vr::system_directory() + L"\\VoucherReorderPort.dll";
+        const bool staleMonitor = installed_is_stale(102, monitor);
+        {
+            std::unique_ptr<SpoolerRestart> spooler;
+            if (staleMonitor) spooler = std::make_unique<SpoolerRestart>();
+            deploy(101, helper);
+            deploy(102, monitor);
+            if (spooler) spooler->restart();
+        }
         // Setup may be launched from Downloads. Only the fixed, verified
         // Program Files executable is used for the privileged printer operation.
         std::wstring command = L"\"" + vr::program() + L"\\PrinterSetup.exe\" " + action + L" " + sid;

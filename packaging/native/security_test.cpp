@@ -38,9 +38,50 @@ static void check_port(const std::wstring& port, const wchar_t* monitor, bool ex
     vr::check(found == expected);
     if (found && monitor) vr::check(!_wcsicmp(owner.c_str(), monitor));
 }
+// Whole-system EnumPortsW health with whatever monitors are installed. Fails
+// on any error, a size/count disagreement, an undersized buffer that is not
+// reported as ERROR_INSUFFICIENT_BUFFER, or a string pointing outside the buffer.
+static void check_enumeration() {
+    for (DWORD level : {1u, 2u}) {
+        DWORD need = 0, count = 0;
+        vr::check(!EnumPortsW(nullptr, level, nullptr, 0, &need, &count) && GetLastError() == ERROR_INSUFFICIENT_BUFFER && need);
+        DWORD bytes = 0;
+        // Exact-size buffer, then a generously padded one; both must work.
+        for (DWORD size : {need, need + 4096}) {
+            std::vector<BYTE> buffer(size + 16);
+            vr::check(EnumPortsW(nullptr, level, buffer.data(), size, &bytes, &count), "EnumPortsW failed with a sufficient buffer");
+            vr::check(bytes <= size && count);
+            DWORD record = level == 1 ? sizeof(PORT_INFO_1W) : sizeof(PORT_INFO_2W);
+            vr::check(static_cast<size_t>(count) * record <= bytes);
+            auto begin = buffer.data(), end = buffer.data() + size;
+            auto inside = [&](const wchar_t* text) {
+                if (!text) return true;
+                auto p = reinterpret_cast<const BYTE*>(text);
+                if (p < begin + static_cast<size_t>(count) * record || p >= end) return false;
+                for (auto q = p; q + 1 < end; q += 2) if (!*reinterpret_cast<const wchar_t*>(q)) return true;
+                return false;
+            };
+            for (DWORD i = 0; i < count; ++i) {
+                if (level == 1) vr::check(inside(reinterpret_cast<PORT_INFO_1W*>(begin)[i].pName), "bad PORT_INFO_1 string");
+                else {
+                    auto& e = reinterpret_cast<PORT_INFO_2W*>(begin)[i];
+                    vr::check(inside(e.pPortName) && inside(e.pMonitorName) && inside(e.pDescription), "bad PORT_INFO_2 string");
+                }
+            }
+        }
+        if (need > 1) {
+            std::vector<BYTE> small(need - 1);
+            vr::check(!EnumPortsW(nullptr, level, small.data(), need - 1, &bytes, &count) &&
+                GetLastError() == ERROR_INSUFFICIENT_BUFFER && bytes >= need, "short buffer not reported");
+        }
+    }
+}
 int wmain(int argc, wchar_t** argv) {
     const wchar_t* stage = L"arguments";
     try {
+        if (argc == 2 && std::wstring(argv[1]) == L"--enum-all") {
+            stage = L"system-wide EnumPortsW levels 1 and 2"; check_enumeration(); return 0;
+        }
         if (argc == 3 && std::wstring(argv[1]) == L"--reject") {
             stage = L"reject untrusted path"; reject(argv[2]); return 0;
         }
