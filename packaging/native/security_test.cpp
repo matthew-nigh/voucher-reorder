@@ -70,8 +70,8 @@ static void check_enumeration() {
             }
         }
         if (need > 1) {
-            std::vector<BYTE> small(need - 1);
-            vr::check(!EnumPortsW(nullptr, level, small.data(), need - 1, &bytes, &count) &&
+            std::vector<BYTE> short_buffer(need - 1);
+            vr::check(!EnumPortsW(nullptr, level, short_buffer.data(), need - 1, &bytes, &count) &&
                 GetLastError() == ERROR_INSUFFICIENT_BUFFER && bytes >= need, "short buffer not reported");
         }
     }
