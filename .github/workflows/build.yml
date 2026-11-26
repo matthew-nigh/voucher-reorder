@@ -17,7 +17,7 @@ jobs:
   test:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.13.12'
@@ -31,7 +31,7 @@ jobs:
     needs: test
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.13.12'
@@ -117,7 +117,7 @@ jobs:
         shell: powershell
         run: scripts/test_virtual_setup.ps1
       - name: Check out the actual v0.2.0 upgrade baseline
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: cdf7427c2f8ba9a48945f2d22a46c0014a082d21
           path: upgrade-baseline
@@ -135,7 +135,7 @@ jobs:
         timeout-minutes: 10
         run: scripts/test_mode_switches.ps1
       - name: Check out the previous native build as the stale-upgrade baseline
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: a2ce244b320df4f52525e6e25e142de05bc2f5d0
           path: stale-baseline
