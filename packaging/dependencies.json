@@ -1,0 +1,37 @@
+{
+  "python-runtime": {
+    "filename": "python-3.13.12-embed-amd64.zip",
+    "url": "https://www.python.org/ftp/python/3.13.12/python-3.13.12-embed-amd64.zip",
+    "sha256": "76f238f606250c87c6beac75dccd35ee99070a13490555936abb6cb64ecce3d0"
+  },
+  "python-source": {
+    "filename": "Python-3.13.12.tar.xz",
+    "url": "https://www.python.org/ftp/python/3.13.12/Python-3.13.12.tar.xz",
+    "sha256": "2a84cd31dd8d8ea8aaff75de66fc1b4b0127dd5799aa50a64ae9a313885b4593"
+  },
+  "pypdf-wheel": {
+    "filename": "pypdf-7.1.1-py3-none-any.whl",
+    "url": "https://files.pythonhosted.org/packages/5b/ef/11ed995bd10a1632f7fea3da38ae8d42bc3ccc5b9969fe04d8620c844408/pypdf-7.1.1-py3-none-any.whl",
+    "sha256": "04c5680d4b4cfa04ab505b09393fc949860c34a4dad6565284d11a2f5c3ce8b1"
+  },
+  "pypdf-source": {
+    "filename": "pypdf-7.1.1.tar.gz",
+    "url": "https://files.pythonhosted.org/packages/96/5f/f41984a8150ec37c6ee50fa6fa1868d065337b65ba510a155848b2ce0b62/pypdf-7.1.1.tar.gz",
+    "sha256": "2eff4e2fc5fb22a6d6711e6f1166cdc9ab5765d90cd0d77dfea3f4aa91a27b1d"
+  },
+  "ghostscript-runtime": {
+    "filename": "gs10080w64.exe",
+    "url": "https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10080/gs10080w64.exe",
+    "sha256": "52a91b8bf09298788d7a57b9206127026c23eacd75405f0a131e26dc381dce50"
+  },
+  "ghostscript-source": {
+    "filename": "ghostscript-10.08.0.tar.xz",
+    "url": "https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10080/ghostscript-10.08.0.tar.xz",
+    "sha256": "c20492bc8ebb96c87fa2e52a0926e1cda8cde95d66145e018ac713fed5da38cf"
+  },
+  "pdfium-runtime": {
+    "filename": "pypdfium2-5.15.2-py3-none-win_amd64.whl",
+    "url": "https://files.pythonhosted.org/packages/fe/7f/8aa446529fa14523e5c18f89e823afc95526689f76a75efe68a82a10d850/pypdfium2-5.15.2-py3-none-win_amd64.whl",
+    "sha256": "74d1bace34fb01c660d0b64344d5a4b7d276942b7c6623c88ab59ea21c5acfbd"
+  }
+}

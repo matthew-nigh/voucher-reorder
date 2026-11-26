@@ -1,0 +1,202 @@
+name: Test and build Windows installer
+on:
+  pull_request:
+  push:
+    branches: [main, codex/windows-test-fixes, codex/windows-test-fixes-2]
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13.12'
+      - run: sudo apt-get update && sudo apt-get install -y ghostscript
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python -m pytest -q
+      - run: ruff check .
+      - run: ruff format --check .
+
+  windows:
+    needs: test
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13.12'
+      - name: Install Windows acceptance test tools
+        run: python -m pip install -r requirements-dev.txt
+      - name: Run portable suite on Windows
+        run: python -m pytest -q
+      - name: Install packaging tools
+        run: |
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            choco install nsis --version=3.11 -y --no-progress
+            if ($LASTEXITCODE -eq 0) { break }
+            if ($attempt -eq 3) { exit $LASTEXITCODE }
+            Start-Sleep -Seconds (10 * $attempt)
+          }
+      - name: Load x64 Visual Studio compiler environment
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          Enter-VsDevShell -VsInstallPath $vs -DevCmdArguments "-arch=x64 -host_arch=x64" -SkipAutomaticLocation
+          foreach ($name in 'PATH','INCLUDE','LIB','LIBPATH') {
+            "${name}=$([Environment]::GetEnvironmentVariable($name))" >> $env:GITHUB_ENV
+          }
+      - name: Check Windows PowerShell syntax
+        shell: powershell
+        run: |
+          Get-ChildItem packaging/*.ps1 | ForEach-Object {
+            $tokens = $null; $errors = $null
+            $null = [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors)
+            if ($errors.Count) { throw ($errors | Out-String) }
+          }
+      - name: Build installer and corresponding source
+        run: python scripts/build_windows.py
+      - name: Refuse AppData elevation targets before helper deployment
+        shell: powershell
+        run: scripts/test_elevation_target.ps1
+      - name: Verify single-installer artifact set
+        shell: powershell
+        run: |
+          if (Test-Path dist/VoucherReorder-0.2.6-PrinterDeploy.exe) { throw 'Obsolete deploy artifact present' }
+          $names = @(Get-Content dist/SHA256SUMS.txt | ForEach-Object { ($_ -split '\s+')[-1] })
+          if (@(Compare-Object $names @('VoucherReorder-0.2.6-Setup.exe','VoucherReorder-0.2.6-sources.zip')).Count) { throw 'Wrong checksum artifact set' }
+      - name: Preserve v0.2.1 engine for identical-input size comparisons
+        shell: bash
+        run: |
+          git fetch --depth=1 origin dc93433ad7ff481acab996f801be6388ec9a7771
+          git show dc93433ad7ff481acab996f801be6388ec9a7771:voucher_reorder/engine.py > build/feedback-baseline-engine.py
+      - name: Smoke test the bundled Windows runtime and Ghostscript
+        run: |
+          & build/windows/runtime/python.exe scripts/smoke_packaged.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Exercise native Inbox notifications and processor idle exit
+        timeout-minutes: 3
+        run: |
+          & build/windows/runtime/python.exe scripts/test_notifications_windows.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check settings preview, DPI scaling, PDF output and asynchronous setup
+        shell: powershell
+        timeout-minutes: 3
+        run: scripts/test_settings.ps1
+      - name: Upload settings preview captures
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Settings-previews
+          path: build/settings-previews/*.png
+          if-no-files-found: ignore
+      - name: Print a synthetic batch (including a 100-page job) to a Windows file port
+        shell: powershell
+        timeout-minutes: 20
+        run: scripts/test_print_pages.ps1
+      - name: Probe standard-user PDF Local Port token and junction behavior
+        shell: powershell
+        timeout-minutes: 3
+        run: scripts/probe_pdf_local_port.ps1
+      - name: Measure hypothetical PDF Local Port overlap
+        shell: powershell
+        timeout-minutes: 8
+        run: scripts/probe_pdf_overlap.ps1
+      - name: Exercise native protected path and ACL rejection
+        timeout-minutes: 2
+        shell: powershell
+        run: scripts/test_virtual_setup.ps1
+      - name: Check out the actual v0.2.0 upgrade baseline
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: cdf7427c2f8ba9a48945f2d22a46c0014a082d21
+          path: upgrade-baseline
+      - name: Build v0.2.0 baseline installer for upgrade tests
+        id: upgrade
+        run: |
+          Copy-Item downloads upgrade-baseline/downloads -Recurse
+          python upgrade-baseline/scripts/build_windows.py
+      - name: Migrate queue, verify distinct complete offline burst PDFs and remove printer
+        shell: powershell
+        timeout-minutes: 6
+        run: scripts/test_provisioning.ps1 -Installer upgrade-baseline/dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.6-Setup.exe
+      - name: Switch Imagesetter, Print to PDF, handoff, repeat the PDF install, and check EnumPortsW/Get-PrinterPort
+        shell: powershell
+        timeout-minutes: 10
+        run: scripts/test_mode_switches.ps1
+      - name: Check out the previous native build as the stale-upgrade baseline
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: a2ce244b320df4f52525e6e25e142de05bc2f5d0
+          path: stale-baseline
+      - name: Build the older PrinterSetup.exe and VoucherReorderPort.dll
+        shell: powershell
+        run: python -c "import sys; sys.path.insert(0, 'scripts'); sys.argv=['x']; import build_printer, pathlib; build_printer.ROOT = pathlib.Path('stale-baseline').resolve(); build_printer.build('build/old-printer')"
+      - name: Upgrade over a stale monitor DLL held by the spooler and a locked helper
+        shell: powershell
+        timeout-minutes: 8
+        run: scripts/test_stale_monitor_upgrade.ps1
+      - name: Exercise selectable Print to PDF Local Port burst
+        shell: powershell
+        timeout-minutes: 6
+        run: scripts/test_pdf_burst.ps1
+      - name: Install and upgrade in a real standard-user account
+        if: ${{ !cancelled() && steps.upgrade.outcome == 'success' }}
+        shell: powershell
+        timeout-minutes: 6
+        run: scripts/test_standard_user.ps1 -Installer upgrade-baseline/dist/VoucherReorder-0.2.0-Setup.exe -UpgradeInstaller dist/VoucherReorder-0.2.6-Setup.exe
+      - name: Upload synthetic PDF size and reprint fixtures
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: PDF-feedback-fixtures
+          path: build/feedback-artifacts/*
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: VoucherReorder-windows-x64
+          path: |
+            dist/VoucherReorder-0.2.6-Setup.exe
+            dist/VoucherReorder-0.2.6-sources.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 90
+
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: windows
+    environment: release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: VoucherReorder-windows-x64
+          path: dist
+      - name: Attach installer, sources and checksums to the tag's Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          printf '%s\n' 'Download VoucherReorder-0.2.6-Setup.exe and choose PDF handoff, recommended Imagesetter virtual printing, or Microsoft Print to PDF virtual printing. Virtual choices request administrator approval during Setup; Print to PDF may lose back-to-back jobs. The source archive and SHA256SUMS.txt accompany the installer. Complete TESTING_ON_WINDOWS.md on plain paper before using check stock. This installer is unsigned.' > release-notes.txt
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | while IFS= read -r asset; do
+              case "$asset" in *-Provisioning.exe|*-PrinterDeploy.exe) gh release delete-asset "$RELEASE_TAG" "$asset" --yes ;; esac
+            done
+            gh release upload "$RELEASE_TAG" dist/* --clobber
+            gh release edit "$RELEASE_TAG" --notes-file release-notes.txt
+          else
+            gh release create "$RELEASE_TAG" dist/* --verify-tag --title "Voucher Reorder $RELEASE_TAG" --notes-file release-notes.txt
+          fi
